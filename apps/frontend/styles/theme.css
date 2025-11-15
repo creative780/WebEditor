@@ -1,0 +1,2070 @@
+/* PrintStudio Editor Theme - Minimal + Accurate */
+
+/* Basic page styling */
+html, body {
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Custom scrollbar for tab navigation */
+.overflow-x-auto::-webkit-scrollbar {
+  height: 8px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Prevent browser zoom on all elements */
+* {
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
+  -ms-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+/* Editor layout styling */
+.editor-layout {
+  display: grid;
+  grid-template-areas: 
+    "topbar topbar topbar"
+    "left canvas right";
+  grid-template-rows: 60px 1fr;
+  grid-template-columns: 80px 1fr 300px;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* Canvas styling */
+.editor-canvas {
+  grid-area: canvas;
+  position: relative;
+  background: white;
+  overflow: hidden;
+}
+
+/* Allow text selection in input fields */
+input, textarea, select {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+:root {
+  /* Spacing & Grid */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Typography Scale - Modern */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 19px;
+  --text-2xl: 22px;
+  --text-3xl: 26px;
+  --text-4xl: 32px;
+
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+
+  /* Colors - Modern Minimal Palette */
+  --color-background: #fafbfc;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f8f9fa;
+  --color-surface-active: #f1f3f4;
+  --color-border: #e1e5e9;
+  --color-border-hover: #d1d5db;
+  --color-border-active: #9ca3af;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+  --color-text-inverse: #ffffff;
+
+  --color-accent: #6F1414;
+  --color-accent-hover: #5A1010;
+  --color-accent-active: #450C0C;
+  --color-accent-light: #fef2f2;
+  --color-accent-gradient: linear-gradient(135deg, #6F1414 0%, #8B1A1A 100%);
+
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #06b6d4;
+
+  /* Print Colors */
+  --color-bleed: #ef4444;
+  --color-trim: #6F1414;
+  --color-safe: #10b981;
+  --color-guide: #6b7280;
+
+  /* Shadows - Modern */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-glow: 0 0 20px rgb(111 20 20 / 0.15);
+
+  /* Border Radius - Modern */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  /* Transitions - Smooth */
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-bounce: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  
+  /* Easing Functions */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Z-Index Scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+
+  /* Editor Specific */
+  --editor-canvas-bg: #ffffff;
+  --editor-ruler-bg: #ffffff;
+  --editor-ruler-text: #6b7280;
+  --editor-guide-color: #6F1414;
+  --editor-selection-color: #6F1414;
+  --editor-selection-fill: rgba(111, 20, 20, 0.1);
+  --editor-grid-color: #e5e7eb;
+  --editor-grid-subdivision: #f3f4f6;
+
+  /* Hit Targets */
+  --hit-target-min: 44px;
+  --hit-target-comfortable: 48px;
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #0f172a;
+    --color-surface: #1e293b;
+    --color-surface-hover: #334155;
+    --color-surface-active: #475569;
+    --color-border: #334155;
+    --color-border-hover: #475569;
+    --color-border-active: #64748b;
+
+    --color-text-primary: #f8fafc;
+    --color-text-secondary: #cbd5e1;
+    --color-text-tertiary: #94a3b8;
+
+    --editor-canvas-bg: #1e293b;
+    --editor-ruler-bg: #0f172a;
+    --editor-ruler-text: #cbd5e1;
+    --editor-grid-color: #334155;
+    --editor-grid-subdivision: #1e293b;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0ms;
+    --transition-normal: 0ms;
+    --transition-slow: 0ms;
+  }
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus Styles */
+.focus-ring {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Utility Classes */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Editor Layout - Modern */
+.editor-layout {
+  display: grid;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "left-rail canvas right-panel";
+  grid-template-columns: 72px 1fr 360px;
+  grid-template-rows: 72px 1fr;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-background);
+}
+
+.editor-topbar {
+  grid-area: topbar;
+  background: var(--color-accent-gradient);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 5px 0 5px;
+  color: #ffffff;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.topbar-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 16px;
+  position: relative;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  min-width: 0;
+  padding-left: 0px;
+}
+
+.topbar-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.topbar-back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.topbar-back-btn:active {
+  transform: translateY(0);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.topbar-project-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.topbar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.topbar-title.editable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.topbar-title.editable:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.topbar-title-input {
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 2px 4px;
+  outline: none;
+  width: 100%;
+  max-width: 300px;
+}
+
+.topbar-title-input:focus {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.topbar-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.topbar-separator {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.status-text {
+  font-size: 14px;
+  color: white;
+  font-weight: 500;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 16px;
+  gap: 12px;
+  position: relative;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.topbar-btn {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.topbar-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.topbar-btn.primary {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.topbar-btn.primary:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.topbar-btn-text {
+  white-space: nowrap;
+}
+
+/* Topbar Icon Buttons */
+.topbar-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.topbar-btn-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.topbar-btn-icon:active {
+  transform: translateY(0);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.editor-topbar .btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.editor-topbar .btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.editor-topbar .btn:disabled {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.editor-topbar .input {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.editor-topbar .input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.editor-topbar .select {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.editor-toolbar {
+  grid-area: toolbar;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2rem;
+  gap: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.editor-toolbar .btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #6F1414;
+  transition: all 0.2s ease;
+}
+
+.editor-toolbar .btn:hover {
+  background: rgba(111, 20, 20, 0.1);
+  border-color: #6F1414;
+}
+
+.editor-toolbar .input {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.editor-toolbar .input:focus {
+  border-color: #6F1414;
+  box-shadow: 0 0 0 3px rgba(111, 20, 20, 0.1);
+}
+
+.editor-left-rail {
+  grid-area: left-rail;
+  background: #f5f5f5;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-2) 0;
+  gap: var(--space-1);
+  box-shadow: var(--shadow-sm);
+}
+
+.editor-canvas {
+  grid-area: canvas;
+  background: #ffffff !important;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-left-panel-overlay {
+  position: fixed;
+  left: 72px;
+  top: 72px;
+  width: 320px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  z-index: 1000;
+  background: #f8f9fa;
+  border: none;
+  border-radius: 0 0 12px 0;
+  box-shadow: 0 8px 32px rgba(111, 20, 20, 0.12), 0 2px 8px rgba(111, 20, 20, 0.08);
+  transform-origin: left center;
+  animation: slideInLeft 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Style scrollbars for left panel overlay */
+.editor-left-panel-overlay::-webkit-scrollbar {
+  width: 8px;
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-20px) scale(0.95);
+  }
+}
+
+/* Smooth transitions for panel content */
+.editor-left-panel-overlay .panel {
+  animation: fadeInUp 0.2s cubic-bezier(0.4, 0, 0.2, 1) 0.1s both;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.editor-context-bar {
+  grid-area: context-bar;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  gap: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Panel Styles - Modern */
+.panel {
+  background: #f8f9fa;
+  border: none;
+  border-radius: 0 0 12px 0;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(111, 20, 20, 0.12), 0 2px 8px rgba(111, 20, 20, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.panel-header {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid #6F1414;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: #6F1414;
+  letter-spacing: 0.025em;
+}
+
+.panel-content {
+  padding: var(--space-5);
+}
+
+/* Button Styles - Modern with Enhanced Animations */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid #6F1414;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: #6F1414;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: var(--hit-target-min);
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0); /* Enable hardware acceleration */
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left var(--transition-normal);
+}
+
+.btn:hover::before {
+  left: 100%;
+}
+
+.btn:hover {
+  background: #6F1414;
+  border-color: #6F1414;
+  color: #ffffff;
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(111, 20, 20, 0.3);
+}
+
+.btn:active {
+  background: #6F1414;
+  border-color: #6F1414;
+  color: #ffffff;
+  transform: translateY(0) scale(0.98);
+  transition: all 0.1s ease;
+}
+
+.btn:focus-visible {
+  outline: 2px solid #6F1414;
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: #6F1414;
+  border-color: #6F1414;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(111, 20, 20, 0.2);
+}
+
+.btn-primary:hover {
+  background: #5A1010;
+  border-color: #5A1010;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(111, 20, 20, 0.4);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #6F1414;
+}
+
+.btn-ghost:hover {
+  background: rgba(111, 20, 20, 0.1);
+  border-color: #6F1414;
+  color: #6F1414;
+}
+
+/* Input Styles - Modern */
+.input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid #6F1414;
+  border-radius: var(--radius-md);
+  background: white;
+  color: #6F1414;
+  font-size: var(--text-sm);
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.input:focus {
+  outline: none;
+  border-color: #6F1414;
+  box-shadow: 0 0 0 3px rgba(111, 20, 20, 0.1), var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.input::placeholder {
+  color: #6F1414;
+  opacity: 0.6;
+}
+
+/* Select Styles */
+.select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236F1414' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right var(--space-2) center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding-right: var(--space-8);
+}
+
+/* Tooltip Styles */
+.tooltip {
+  position: relative;
+}
+
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-text-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  z-index: var(--z-tooltip);
+}
+
+.tooltip:hover::after {
+  opacity: 1;
+}
+
+/* Icon Styles - Modern with Red Accent */
+.icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  color: #6F1414;
+}
+
+.icon-sm {
+  width: 16px;
+  height: 16px;
+  color: #6F1414;
+}
+
+.icon-lg {
+  width: 24px;
+  height: 24px;
+  color: #6F1414;
+}
+
+.icon-xs {
+  width: 14px;
+  height: 14px;
+  color: #6F1414;
+}
+
+/* Topbar Icons - White */
+.editor-topbar .icon {
+  color: #ffffff;
+}
+
+.editor-topbar .icon-sm {
+  color: #ffffff;
+}
+
+.editor-topbar .icon-lg {
+  color: #ffffff;
+}
+
+.editor-topbar .icon-xs {
+  color: #ffffff;
+}
+
+/* Scrollbar Styles */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+/* Right Panel Styles */
+.editor-right-panel {
+  grid-area: right-panel;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  position: relative; /* Added for brush card positioning */
+  height: 100%;
+}
+
+/* Style scrollbars for right panel */
+.editor-right-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.editor-right-panel::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.editor-right-panel::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.editor-right-panel::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Slider Styles for Brush Card */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e5e7eb;
+  border-radius: 8px;
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #6F1414;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #6F1414;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider:hover::-webkit-slider-thumb {
+  background: #5a1010;
+  transform: scale(1.1);
+}
+
+.slider:hover::-moz-range-thumb {
+  background: #5a1010;
+  transform: scale(1.1);
+}
+
+.editor-right-panel-inspector {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/* Modern scrollbar for left panel overlay */
+.editor-left-panel-overlay {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: transparent transparent; /* Firefox - hidden by default */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+  scroll-behavior: smooth; /* Smooth scrolling */
+  -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #6F1414 0%, #8B1A1A 100%);
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #5A1010 0%, #7A1515 100%);
+}
+
+.editor-left-panel-overlay::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(135deg, #450C0C 0%, #6A1212 100%);
+}
+
+/* Modern scrollbar for all panels */
+.panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel::-webkit-scrollbar-thumb {
+  background: rgba(111, 20, 20, 0.2);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(111, 20, 20, 0.4);
+}
+
+.panel::-webkit-scrollbar-thumb:active {
+  background: rgba(111, 20, 20, 0.6);
+}
+
+.panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111, 20, 20, 0.2) transparent;
+}
+
+/* Modern Floating Toolbar - Optimized */
+.floating-toolbar-modern {
+  position: absolute;
+  top: 60px; /* Back to original position for 40px ruler */
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 12px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 8px 32px rgba(111, 20, 20, 0.12), 0 2px 8px rgba(111, 20, 20, 0.08);
+  z-index: 1;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  max-width: calc(100% - 48px);
+  overflow-x: auto;
+  /* Prevent toolbar container from blocking canvas interactions */
+  pointer-events: none;
+}
+
+/* Keep toolbar controls interactive while container ignores events */
+.floating-toolbar-modern > * {
+  pointer-events: auto;
+}
+
+.floating-toolbar-modern::-webkit-scrollbar {
+  height: 4px;
+}
+
+.floating-toolbar-modern::-webkit-scrollbar-track {
+  background: rgba(111, 20, 20, 0.1);
+  border-radius: 2px;
+}
+
+.floating-toolbar-modern::-webkit-scrollbar-thumb {
+  background: rgba(111, 20, 20, 0.3);
+  border-radius: 2px;
+}
+
+.floating-toolbar-modern::-webkit-scrollbar-thumb:hover {
+  background: rgba(111, 20, 20, 0.5);
+}
+
+.floating-toolbar-modern:hover {
+  box-shadow: 0 12px 40px rgba(111, 20, 20, 0.15), 0 4px 12px rgba(111, 20, 20, 0.1);
+}
+
+/* Toolbar Button Styles - Optimized for Text Editing */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  position: relative;
+}
+
+.toolbar-group:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 24px;
+  background: rgba(111, 20, 20, 0.2);
+}
+
+.toolbar-group:first-child {
+  padding-left: 8px;
+}
+
+.toolbar-group:last-child {
+  padding-right: 8px;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 8px;
+  color: #6F1414;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.toolbar-btn:hover {
+  background: rgba(111, 20, 20, 0.1);
+  border-color: rgba(111, 20, 20, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(111, 20, 20, 0.2);
+}
+
+.toolbar-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(111, 20, 20, 0.2);
+}
+
+.toolbar-btn.active {
+  background: #6F1414;
+  color: white;
+  border-color: #6F1414;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(111, 20, 20, 0.3);
+}
+
+.toolbar-btn.active:hover {
+  background: #5a1010;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(111, 20, 20, 0.4);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.toolbar-btn:disabled:hover {
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+}
+
+.floating-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.floating-btn:disabled:hover {
+  background: transparent;
+  transform: none;
+}
+
+.floating-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Color Picker Component - Balanced Spacing */
+.floating-color-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(111, 20, 20, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(111, 20, 20, 0.1);
+}
+
+.floating-color-input {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+  overflow: hidden;
+}
+
+.floating-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+}
+
+.floating-color-input::-webkit-color-swatch {
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 4px;
+  padding: 0;
+}
+
+/* Small color input for stroke color */
+.floating-color-input-small {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Fixed size for color input in floating toolbar */
+.floating-toolbar-modern .toolbar-control .floating-color-input-small {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  max-width: 24px;
+  flex-shrink: 0;
+}
+
+.floating-color-input-small::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+}
+
+.floating-color-input-small::-webkit-color-swatch {
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 3px;
+  padding: 0;
+}
+
+/* Toolbar slider for shape properties */
+.toolbar-slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(111, 20, 20, 0.1);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* Fixed width slider for floating toolbar to prevent fluctuation */
+.floating-toolbar-modern .toolbar-control .toolbar-slider {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  flex: 0 0 80px;
+}
+
+.toolbar-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #6F1414;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.toolbar-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #6F1414;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Text Tools Animation */
+.text-tools-section {
+  animation: slideInFromTop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.floating-select {
+  background: white;
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: #6F1414;
+  min-width: 120px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.floating-select:focus {
+  outline: none;
+  border-color: #6F1414;
+  box-shadow: 0 0 0 2px rgba(111, 20, 20, 0.1);
+}
+
+.floating-select:hover {
+  border-color: rgba(111, 20, 20, 0.4);
+}
+
+.floating-input {
+  background: white;
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 14px;
+  color: #6F1414;
+  width: 50px;
+  text-align: center;
+  transition: border-color 0.2s ease;
+}
+
+.floating-input:focus {
+  outline: none;
+  border-color: #6F1414;
+  box-shadow: 0 0 0 2px rgba(111, 20, 20, 0.1);
+}
+
+.floating-input:hover {
+  border-color: rgba(111, 20, 20, 0.4);
+}
+
+.zoom-text {
+  font-size: 12px;
+  color: #6F1414;
+  font-weight: 500;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* Advanced Text Panel - Improved */
+.advanced-text-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+  min-width: 280px;
+  animation: slideInFromTop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: 8px;
+}
+
+.toolbar-dropdown {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.toolbar-select {
+  background: white;
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #6F1414;
+  min-width: 90px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  font-family: inherit;
+  height: 32px;
+}
+
+.toolbar-select:focus {
+  outline: none;
+  border-color: #6F1414;
+  box-shadow: 0 0 0 2px rgba(111, 20, 20, 0.1);
+}
+
+.toolbar-select:hover {
+  border-color: rgba(111, 20, 20, 0.4);
+}
+
+.toolbar-input {
+  background: white;
+  border: 1px solid rgba(111, 20, 20, 0.2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #6F1414;
+  width: 55px;
+  text-align: center;
+  transition: border-color 0.2s ease;
+  font-family: inherit;
+  height: 32px;
+}
+
+.toolbar-input:focus {
+  outline: none;
+  border-color: #6F1414;
+  box-shadow: 0 0 0 2px rgba(111, 20, 20, 0.1);
+}
+
+.toolbar-input:hover {
+  border-color: rgba(111, 20, 20, 0.4);
+}
+
+.toolbar-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.toolbar-control label {
+  font-size: 13px;
+  color: #6F1414;
+  font-weight: 500;
+  min-width: 80px;
+  text-align: left;
+}
+
+
+.toolbar-control span {
+  font-size: 12px;
+  color: #6F1414;
+  font-weight: 500;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Horizontal toolbar controls for floating toolbar - prevents fluctuation */
+.floating-toolbar-modern .toolbar-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  height: 36px;
+}
+
+.floating-toolbar-modern .toolbar-control label {
+  font-size: 12px;
+  color: #6F1414;
+  font-weight: 500;
+  min-width: fit-content;
+  width: auto;
+  white-space: nowrap;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.floating-toolbar-modern .toolbar-control .toolbar-value {
+  font-size: 12px;
+  color: #6F1414;
+  font-weight: 500;
+  width: 50px;
+  min-width: 50px;
+  max-width: 50px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.toolbar-text {
+  font-size: 12px;
+  color: #6F1414;
+  font-weight: 500;
+  min-width: 40px;
+  text-align: center;
+  padding: 0 6px;
+  background: rgba(111, 20, 20, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(111, 20, 20, 0.1);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Enhanced Button States */
+.toolbar-btn.active {
+  background: #6F1414;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(111, 20, 20, 0.3);
+}
+
+.toolbar-btn.active:hover {
+  background: #5a1010;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(111, 20, 20, 0.4);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.toolbar-btn:disabled:hover {
+  background: rgba(111, 20, 20, 0.1);
+  transform: none;
+  box-shadow: none;
+}
+
+/* Text Effects Preview */
+.text-effect-preview {
+  display: inline-block;
+  padding: 4px 8px;
+  margin: 2px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.text-effect-preview:hover {
+  background: rgba(111, 20, 20, 0.1);
+  transform: translateY(-1px);
+}
+
+.text-effect-preview.active {
+  background: #6F1414;
+  color: white;
+}
+
+/* Font Family Preview */
+.font-preview {
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: #6F1414;
+}
+
+/* Responsive Design for Advanced Panel */
+@media (max-width: 768px) {
+  .advanced-text-panel {
+    min-width: 240px;
+    padding: 12px;
+  }
+  
+  .toolbar-control {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .toolbar-control label {
+    min-width: auto;
+  }
+}
+
+/* Metrics Dropdown Styles */
+.metrics-dropdown {
+  position: relative;
+  display: inline-block;
+  z-index: 10;
+}
+
+.metrics-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 50px;
+  justify-content: center;
+}
+
+.metrics-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.metrics-text {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.metrics-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 120px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.metrics-option {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  background: white;
+  border: none;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.metrics-option:hover {
+  background: #f3f4f6;
+}
+
+.metrics-option.active {
+  background: #6F1414;
+  color: white;
+}
+
+.metrics-option.active:hover {
+  background: #8B1A1A;
+}
+
+/* ============================================================================
+   Animations & Micro-interactions
+   ============================================================================ */
+
+/* Loading Spinner Animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulse Animation for Loading States */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fade Out Animation */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Slide In from Right */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Slide In from Left */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Slide In from Bottom */
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Slide In from Top */
+@keyframes slideInDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Scale In Animation */
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Scale Out Animation */
+@keyframes scaleOut {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* Bounce Animation */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Shake Animation for Errors */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+/* Selection Pulse Animation */
+@keyframes selectionPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(111, 20, 20, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(111, 20, 20, 0);
+  }
+}
+
+/* Tool Selection Feedback */
+@keyframes toolSelect {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Context Menu Slide */
+@keyframes contextMenuSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ============================================================================
+   Animation Utility Classes
+   ============================================================================ */
+
+/* Spinning Loader */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Pulse Animation */
+.animate-pulse {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Fade Animations */
+.animate-fade-in {
+  animation: fadeIn var(--transition-normal) var(--ease-out);
+}
+
+.animate-fade-out {
+  animation: fadeOut var(--transition-fast) var(--ease-out);
+}
+
+/* Slide Animations */
+.animate-slide-in-right {
+  animation: slideInRight var(--transition-normal) var(--ease-out);
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft var(--transition-normal) var(--ease-out);
+}
+
+.animate-slide-in-up {
+  animation: slideInUp var(--transition-normal) var(--ease-out);
+}
+
+.animate-slide-in-down {
+  animation: slideInDown var(--transition-normal) var(--ease-out);
+}
+
+/* Scale Animations */
+.animate-scale-in {
+  animation: scaleIn var(--transition-normal) var(--ease-spring);
+}
+
+.animate-scale-out {
+  animation: scaleOut var(--transition-fast) var(--ease-out);
+}
+
+/* Bounce Animation */
+.animate-bounce {
+  animation: bounce 0.5s var(--ease-spring);
+}
+
+/* Shake Animation */
+.animate-shake {
+  animation: shake 0.5s var(--ease-out);
+}
+
+/* Selection Pulse */
+.animate-selection-pulse {
+  animation: selectionPulse 2s ease-in-out infinite;
+}
+
+/* Tool Select Feedback */
+.animate-tool-select {
+  animation: toolSelect 0.2s var(--ease-spring);
+}
+
+/* Context Menu */
+.animate-context-menu {
+  animation: contextMenuSlide var(--transition-fast) var(--ease-out);
+}
+
+/* ============================================================================
+   Transition Utility Classes
+   ============================================================================ */
+
+/* Smooth Transitions */
+.transition-all {
+  transition: all var(--transition-normal);
+}
+
+.transition-fast {
+  transition: all var(--transition-fast);
+}
+
+.transition-slow {
+  transition: all var(--transition-slow);
+}
+
+.transition-spring {
+  transition: all var(--transition-spring);
+}
+
+/* Specific Property Transitions */
+.transition-colors {
+  transition: color var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal);
+}
+
+.transition-opacity {
+  transition: opacity var(--transition-fast);
+}
+
+.transition-transform {
+  transition: transform var(--transition-normal);
+}
+
+.transition-shadow {
+  transition: box-shadow var(--transition-normal);
+}
+
+/* ============================================================================
+   Hover Effects & Micro-interactions
+   ============================================================================ */
+
+/* Button Hover Effect with Subtle Scale */
+.btn-hover-scale {
+  transition: transform var(--transition-fast), box-shadow var(--transition-normal);
+}
+
+.btn-hover-scale:hover {
+  transform: scale(1.02);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-hover-scale:active {
+  transform: scale(0.98);
+}
+
+/* Card Hover Effect */
+.card-hover {
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-normal);
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-border-hover);
+}
+
+/* Panel Slide In */
+.panel-slide-in {
+  animation: slideInLeft var(--transition-slow) var(--ease-out);
+}
+
+/* Panel Fade In */
+.panel-fade-in {
+  animation: fadeIn var(--transition-normal) var(--ease-out);
+}
+
+/* Loading State Overlay */
+.loading-overlay {
+  animation: fadeIn var(--transition-fast) var(--ease-out);
+}
+
+/* Notification Slide In */
+.notification-slide-in {
+  animation: slideInRight var(--transition-normal) var(--ease-out);
+}
+
+.notification-slide-out {
+  animation: fadeOut var(--transition-fast) var(--ease-out), slideInRight var(--transition-fast) var(--ease-out) reverse;
+}
+
+/* Error Toast Animation */
+.error-toast {
+  animation: shake 0.5s var(--ease-out), fadeIn var(--transition-fast) var(--ease-out);
+}
+
+/* Success Toast Animation */
+.success-toast {
+  animation: scaleIn var(--transition-normal) var(--ease-spring), fadeIn var(--transition-fast) var(--ease-out);
+}
+
+/* Smooth Panel Transitions */
+.left-rail-panel {
+  animation: slideInLeft var(--transition-slow) var(--ease-out);
+}
+
+/* Smooth Context Menu */
+.context-menu-enter {
+  animation: contextMenuSlide var(--transition-fast) var(--ease-out);
+}
+
+/* Object Selection Animation */
+.object-selected {
+  animation: selectionPulse 2s ease-in-out infinite;
+}
+
+/* Tool Button Active State */
+.tool-active {
+  animation: toolSelect 0.2s var(--ease-spring);
+}
+
+/* Disable animations for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-pulse,
+  .animate-fade-in,
+  .animate-fade-out,
+  .animate-slide-in-right,
+  .animate-slide-in-left,
+  .animate-slide-in-up,
+  .animate-slide-in-down,
+  .animate-scale-in,
+  .animate-scale-out,
+  .animate-bounce,
+  .animate-shake,
+  .animate-selection-pulse,
+  .animate-tool-select,
+  .animate-context-menu,
+  .btn-hover-scale:hover,
+  .card-hover:hover,
+  .panel-slide-in,
+  .panel-fade-in,
+  .loading-overlay,
+  .notification-slide-in,
+  .error-toast,
+  .success-toast,
+  .left-rail-panel,
+  .context-menu-enter,
+  .object-selected,
+  .tool-active {
+    animation: none !important;
+    transition: none !important;
+  }
+}

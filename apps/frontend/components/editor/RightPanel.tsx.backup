@@ -1,0 +1,812 @@
+'use client';
+
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Eye, RotateCcw, Save, Brush, CheckCircle, AlertTriangle, Palette, Zap, Monitor, Smartphone, Link, Link2Off } from 'lucide-react';
+import { useEditorStore } from '../../state/useEditorStore';
+import { PrintQualityPanel } from './panels/PrintQualityPanel';
+import { TemplatesPanel } from './panels/TemplatesPanel';
+
+export function RightPanel() {
+  const { 
+    document, 
+    setCurrentPage, 
+    setDocumentSize, 
+    setBleed, 
+    setDPI,
+    setZoom,
+    setPan,
+    fitToScreen,
+    setActiveTool,
+    activeTool,
+    zoom,
+    panX,
+    panY
+  } = useEditorStore();
+  
+  const [currentSide, setCurrentSide] = useState<'front' | 'back'>('front');
+  const [isEditingSize, setIsEditingSize] = useState(false);
+  const [tempWidth, setTempWidth] = useState(document.width);
+  const [tempHeight, setTempHeight] = useState(document.height);
+  const [tempBleed, setTempBleed] = useState(document.bleed);
+  const [tempDpi, setTempDpi] = useState(document.dpi);
+  const [isBrushCardOpen, setIsBrushCardOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'preview' | 'quality' | 'templates'>('preview');
+  const [isAspectRatioLocked, setIsAspectRatioLocked] = useState(false);
+  const [lockedAspectRatio, setLockedAspectRatio] = useState<number | null>(null);
+  const brushCardRef = useRef<HTMLDivElement>(null);
+  
+  // Brush settings state
+  const [brushSize, setBrushSize] = useState(10);
+  const [brushOpacity, setBrushOpacity] = useState(100);
+  const [brushType, setBrushType] = useState<'round' | 'square' | 'soft' | 'hard'>('round');
+  const [brushColor, setBrushColor] = useState('#6F1414');
+
+  const handlePageClick = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleSizeChange = () => {
+    setDocumentSize(tempWidth, tempHeight, document.unit);
+    setBleed(tempBleed);
+    setDPI(tempDpi);
+    setIsEditingSize(false);
+  };
+
+  // Debounced update functions for smooth performance
+  const debouncedUpdateRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const debouncedSetDocumentSize = useCallback((width: number, height: number, unit: 'px' | 'mm' | 'cm' | 'in' | 'ft') => {
+    if (debouncedUpdateRef.current) {
+      clearTimeout(debouncedUpdateRef.current);
+    }
+    debouncedUpdateRef.current = setTimeout(() => {
+      setDocumentSize(width, height, unit);
+    }, 50); // 50ms debounce for smooth updates
+  }, [setDocumentSize]);
+
+  const debouncedSetBleed = useCallback((bleed: number) => {
+    if (debouncedUpdateRef.current) {
+      clearTimeout(debouncedUpdateRef.current);
+    }
+    debouncedUpdateRef.current = setTimeout(() => {
+      setBleed(bleed);
+    }, 50);
+  }, [setBleed]);
+
+  const debouncedSetDPI = useCallback((dpi: number) => {
+    if (debouncedUpdateRef.current) {
+      clearTimeout(debouncedUpdateRef.current);
+    }
+    debouncedUpdateRef.current = setTimeout(() => {
+      setDPI(dpi);
+    }, 50);
+  }, [setDPI]);
+
+  // Live size change handlers - optimized for smooth performance with aspect ratio lock
+  const handleWidthChange = useCallback((value: number) => {
+    if (isAspectRatioLocked && lockedAspectRatio !== null) {
+      // When locked, only clamp the input value, not the calculated proportional value
+      const clampedValue = Math.max(0.1, Math.min(48, value));
+      setTempWidth(clampedValue);
+      
+      // Calculate proportional height based on stored aspect ratio
+      const newHeight = clampedValue * lockedAspectRatio;
+      setTempHeight(newHeight);
+      debouncedSetDocumentSize(clampedValue, newHeight, document.unit);
+    } else {
+      // When unlocked, clamp both values independently
+      const clampedValue = Math.max(0.1, Math.min(48, value));
+      setTempWidth(clampedValue);
+      debouncedSetDocumentSize(clampedValue, tempHeight, document.unit);
+    }
+  }, [tempHeight, document.unit, isAspectRatioLocked, lockedAspectRatio, debouncedSetDocumentSize]);
+
+  const handleHeightChange = useCallback((value: number) => {
+    if (isAspectRatioLocked && lockedAspectRatio !== null) {
+      // When locked, only clamp the input value, not the calculated proportional value
+      const clampedValue = Math.max(0.1, Math.min(48, value));
+      setTempHeight(clampedValue);
+      
+      // Calculate proportional width based on stored aspect ratio
+      const newWidth = clampedValue / lockedAspectRatio;
+      setTempWidth(newWidth);
+      debouncedSetDocumentSize(newWidth, clampedValue, document.unit);
+    } else {
+      // When unlocked, clamp both values independently
+      const clampedValue = Math.max(0.1, Math.min(48, value));
+      setTempHeight(clampedValue);
+      debouncedSetDocumentSize(tempWidth, clampedValue, document.unit);
+    }
+  }, [tempWidth, document.unit, isAspectRatioLocked, lockedAspectRatio, debouncedSetDocumentSize]);
+
+  const handleBleedChange = useCallback((value: number) => {
+    // Only ensure bleed is not negative (no upper limit)
+    const clampedValue = Math.max(0, value);
+    setTempBleed(clampedValue);
+    debouncedSetBleed(clampedValue);
+  }, [debouncedSetBleed]);
+
+  const handleDpiChange = useCallback((value: number) => {
+    setTempDpi(value);
+    debouncedSetDPI(value);
+  }, [debouncedSetDPI]);
+
+  const handleAspectRatioToggle = useCallback(() => {
+    if (!isAspectRatioLocked) {
+      // When locking, store the current aspect ratio
+      const currentAspectRatio = document.height / document.width;
+      setLockedAspectRatio(currentAspectRatio);
+    } else {
+      // When unlocking, clear the stored aspect ratio
+      setLockedAspectRatio(null);
+    }
+    setIsAspectRatioLocked(!isAspectRatioLocked);
+  }, [isAspectRatioLocked, document.height, document.width]);
+
+  const handleCancelEdit = () => {
+    // Reset temp values to current document values
+    setTempWidth(document.width);
+    setTempHeight(document.height);
+    setTempBleed(document.bleed);
+    setTempDpi(document.dpi);
+    setIsEditingSize(false);
+  };
+
+  // Unit conversion helper - convert values when document unit changes
+  const convertValuesToCurrentUnit = useCallback(() => {
+    const dpi = document.dpi;
+    const currentUnit = document.unit;
+    
+    // Convert from pixels to current unit for display
+    const widthPx = tempWidth * dpi;
+    const heightPx = tempHeight * dpi;
+    const bleedPx = tempBleed * dpi;
+    
+    let newWidth = tempWidth;
+    let newHeight = tempHeight;
+    let newBleed = tempBleed;
+    
+    switch (currentUnit) {
+      case 'px':
+        newWidth = widthPx;
+        newHeight = heightPx;
+        newBleed = bleedPx;
+        break;
+      case 'in':
+        newWidth = widthPx / dpi;
+        newHeight = heightPx / dpi;
+        newBleed = bleedPx / dpi;
+        break;
+      case 'cm':
+        newWidth = widthPx / (dpi / 2.54);
+        newHeight = heightPx / (dpi / 2.54);
+        newBleed = bleedPx / (dpi / 2.54);
+        break;
+      case 'mm':
+        newWidth = widthPx / (dpi / 25.4);
+        newHeight = heightPx / (dpi / 25.4);
+        newBleed = bleedPx / (dpi / 25.4);
+        break;
+      case 'ft':
+        newWidth = widthPx / (dpi * 12);
+        newHeight = heightPx / (dpi * 12);
+        newBleed = bleedPx / (dpi * 12);
+        break;
+    }
+    
+    setTempWidth(newWidth);
+    setTempHeight(newHeight);
+    setTempBleed(newBleed);
+  }, [document.unit, document.dpi, tempWidth, tempHeight, tempBleed]);
+
+  const handleBrushClick = () => {
+    setIsBrushCardOpen(!isBrushCardOpen);
+    // Activate brush tool when opening brush card
+    if (!isBrushCardOpen) {
+      setActiveTool('brush');
+    }
+  };
+
+  const handleResetView = () => {
+    fitToScreen();
+  };
+
+  // Brush settings handlers
+  const handleBrushSizeChange = (size: number) => {
+    setBrushSize(size);
+    // Apply brush size to active brush tool
+    if (activeTool === 'brush') {
+      // This would update the brush tool's size in the store
+      // For now, we'll store it locally and apply when brush tool is used
+    }
+  };
+
+  const handleBrushOpacityChange = (opacity: number) => {
+    setBrushOpacity(opacity);
+  };
+
+  const handleBrushTypeChange = (type: 'round' | 'square' | 'soft' | 'hard') => {
+    setBrushType(type);
+  };
+
+  const handleBrushColorChange = (color: string) => {
+    setBrushColor(color);
+  };
+
+  const handleQuickColorClick = (color: string) => {
+    setBrushColor(color);
+  };
+
+  const handleOrientationChange = (orientation: 'landscape' | 'portrait') => {
+    const currentWidth = document.width;
+    const currentHeight = document.height;
+    
+    if (orientation === 'landscape') {
+      // Switch to landscape: width > height
+      if (currentWidth < currentHeight) {
+        setDocumentSize(currentHeight, currentWidth, document.unit);
+      }
+    } else {
+      // Switch to portrait: height > width
+      if (currentWidth > currentHeight) {
+        setDocumentSize(currentHeight, currentWidth, document.unit);
+      }
+    }
+  };
+
+  const isLandscape = document.width > document.height;
+
+  // Click outside to close brush card
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (brushCardRef.current && !brushCardRef.current.contains(event.target as Node)) {
+        setIsBrushCardOpen(false);
+      }
+    };
+
+    if (isBrushCardOpen) {
+      window.document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      window.document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isBrushCardOpen]);
+
+  // Cleanup debounced timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (debouncedUpdateRef.current) {
+        clearTimeout(debouncedUpdateRef.current);
+      }
+    };
+  }, []);
+
+  // Sync temp values with document values when they change externally
+  useEffect(() => {
+    setTempWidth(document.width);
+    setTempHeight(document.height);
+    setTempBleed(document.bleed);
+    setTempDpi(document.dpi);
+  }, [document.width, document.height, document.bleed, document.dpi]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle shortcuts when not typing in inputs
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (event.key) {
+        case 'r':
+        case 'R':
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            handleResetView();
+          }
+          break;
+        case 'b':
+        case 'B':
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            handleBrushClick();
+          }
+          break;
+        case 'Escape':
+          if (isBrushCardOpen) {
+            setIsBrushCardOpen(false);
+          }
+          if (isEditingSize) {
+            handleCancelEdit();
+          }
+          break;
+        case 'Enter':
+          // No longer needed since changes apply live
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isBrushCardOpen, isEditingSize]);
+
+  return (
+    <div className="editor-right-panel" style={{ backgroundColor: '#f2f2f2' }}>
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <div className="flex">
+          <button
+            className={`flex-1 px-4 py-3 text-xs font-medium transition-all duration-300 ease-in-out ${
+              activeTab === 'preview'
+                ? 'bg-[#6F1414] text-white border-b-2 border-[#6F1414]'
+                : 'bg-white text-[#6F1414] hover:bg-gray-50'
+            }`}
+            onClick={() => setActiveTab('preview')}
+          >
+            <Eye className="w-3 h-3 mx-auto mb-1" />
+            Preview
+          </button>
+          <button
+            className={`flex-1 px-4 py-3 text-xs font-medium transition-all duration-300 ease-in-out ${
+              activeTab === 'quality'
+                ? 'bg-[#6F1414] text-white border-b-2 border-[#6F1414]'
+                : 'bg-white text-[#6F1414] hover:bg-gray-50'
+            }`}
+            onClick={() => setActiveTab('quality')}
+          >
+            <CheckCircle className="w-3 h-3 mx-auto mb-1" />
+            Quality
+          </button>
+          <button
+            className={`flex-1 px-4 py-3 text-xs font-medium transition-all duration-300 ease-in-out ${
+              activeTab === 'templates'
+                ? 'bg-[#6F1414] text-white border-b-2 border-[#6F1414]'
+                : 'bg-white text-[#6F1414] hover:bg-gray-50'
+            }`}
+            onClick={() => setActiveTab('templates')}
+          >
+            <Palette className="w-3 h-3 mx-auto mb-1" />
+            Templates
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'preview' && (
+          <div className="h-full overflow-y-auto">
+            {/* Preview Canvas */}
+            <div className="bg-white border-2 border-[#6F1414] rounded-lg aspect-[3.5/2] mb-4 flex items-center justify-center shadow-sm mx-2 mt-2 relative overflow-hidden">
+              <div className="text-center text-[#6F1414]">
+                <div className="w-16 h-16 bg-[#6F1414] bg-opacity-10 rounded-lg flex items-center justify-center mx-auto mb-2">
+                  <Eye className="icon text-[#6F1414]" />
+                </div>
+                <p className="text-sm font-medium">Live Preview</p>
+                <p className="text-xs text-[#6F1414] text-opacity-70">
+                  {document.width} × {document.height} {document.unit}
+                </p>
+                <p className="text-xs text-[#6F1414] text-opacity-50 mt-1">
+                  Zoom: {Math.round(zoom * 100)}% | Page {document.currentPage}
+                </p>
+                {currentSide === 'back' && (
+                  <p className="text-xs text-[#6F1414] text-opacity-50 mt-1 font-medium">
+                    BACK SIDE
+                  </p>
+                )}
+              </div>
+              
+              {/* Live status indicators */}
+              <div className="absolute top-2 right-2 flex gap-1">
+                <div className={`w-2 h-2 rounded-full ${isBrushCardOpen ? 'bg-green-500' : 'bg-gray-300'}`} title="Brush Tool"></div>
+                <div className={`w-2 h-2 rounded-full ${isEditingSize ? 'bg-blue-500' : 'bg-gray-300'}`} title="Editing Mode"></div>
+                <div className={`w-2 h-2 rounded-full ${activeTool === 'brush' ? 'bg-red-500' : 'bg-gray-300'}`} title="Active Tool"></div>
+              </div>
+            </div>
+
+            {/* Artboard Orientation Toggle */}
+            <div className="flex gap-1 mb-4 mx-2">
+              <button
+                className={`btn flex-1 text-sm font-medium transition-all duration-300 ease-in-out ${
+                  isLandscape 
+                    ? 'bg-[#6F1414] text-white border-[#6F1414] shadow-md' 
+                    : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white hover:shadow-md'
+                }`}
+                onClick={() => handleOrientationChange('landscape')}
+                title="Landscape Orientation"
+              >
+                <Monitor className="w-4 h-4 mr-1" />
+                Landscape
+              </button>
+              <button
+                className={`btn flex-1 text-sm font-medium transition-all duration-300 ease-in-out ${
+                  !isLandscape 
+                    ? 'bg-[#6F1414] text-white border-[#6F1414] shadow-md' 
+                    : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white hover:shadow-md'
+                }`}
+                onClick={() => handleOrientationChange('portrait')}
+                title="Portrait Orientation"
+              >
+                <Smartphone className="w-4 h-4 mr-1" />
+                Portrait
+              </button>
+            </div>
+
+            {/* Front/Back Toggle */}
+            <div className="flex gap-1 mb-4 mx-2">
+              <button
+                className={`btn flex-1 text-sm font-medium transition-all duration-300 ease-in-out ${
+                  currentSide === 'front' 
+                    ? 'bg-[#6F1414] text-white border-[#6F1414] shadow-md' 
+                    : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white hover:shadow-md'
+                }`}
+                onClick={() => setCurrentSide('front')}
+              >
+                FRONT SIDE
+              </button>
+              <button
+                className={`btn flex-1 text-sm font-medium transition-all duration-300 ease-in-out ${
+                  currentSide === 'back' 
+                    ? 'bg-[#6F1414] text-white border-[#6F1414] shadow-md' 
+                    : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white hover:shadow-md'
+                }`}
+                onClick={() => setCurrentSide('back')}
+              >
+                BACK SIDE
+              </button>
+            </div>
+
+            {/* Page Indicators */}
+            <div className="flex items-center justify-center gap-2 mx-2">
+              {Array.from({ length: document.pages }, (_, i) => (
+                <button
+                  key={i}
+                  className={`w-3 h-3 rounded-full border-2 transition-all duration-300 ease-in-out ${
+                    document.currentPage === i + 1
+                      ? 'bg-[#6F1414] border-[#6F1414] shadow-md scale-110'
+                      : 'bg-white border-[#6F1414] hover:bg-[#6F1414] hover:bg-opacity-20 hover:scale-105'
+                  }`}
+                  onClick={() => handlePageClick(i + 1)}
+                  title={`Page ${i + 1}`}
+                />
+              ))}
+            </div>
+
+            {/* Page Info */}
+            <div className="mt-4 text-center text-xs text-[#6F1414] font-medium mx-2">
+              Page {document.currentPage} of {document.pages}
+            </div>
+
+            {/* Document Info - Editable */}
+            <div className="mt-6 space-y-4 mx-2">
+              <div className="text-xs text-[#6F1414]">
+                <div className="flex justify-between items-center py-3 border-b border-[#6F1414] border-opacity-20">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Canvas Size:</span>
+                    <span className="text-xs text-[#6F1414] text-opacity-50">Unit: {document.unit.toUpperCase()} (change in topbar)</span>
+                  </div>
+                  {isEditingSize ? (
+                    <div className="flex items-center gap-1">
+                      {isAspectRatioLocked ? (
+                        // Single input when locked - controls both dimensions proportionally
+                        <>
+                          <input
+                            type="number"
+                            className="input w-20 h-7 text-xs text-center border border-gray-300 rounded px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:border-[#6F1414] focus:outline-none"
+                            value={tempWidth}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value) || 0;
+                              handleWidthChange(value);
+                            }}
+                            step="0.1"
+                            min="0.1"
+                            max="48"
+                            placeholder="Width"
+                            title="Canvas width (0.1 to 48 inches)"
+                          />
+                          <span className="text-xs text-gray-500">×</span>
+                          <div className="w-16 h-7 flex items-center justify-center text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded">
+                            {tempHeight.toFixed(1)}
+                          </div>
+                        </>
+                      ) : (
+                        // Two separate inputs when unlocked
+                        <>
+                          <input
+                            type="number"
+                            className="input w-16 h-7 text-xs text-center border border-gray-300 rounded px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:border-[#6F1414] focus:outline-none"
+                            value={tempWidth}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value) || 0;
+                              handleWidthChange(value);
+                            }}
+                            step="0.1"
+                            min="0.1"
+                            max="48"
+                            title="Canvas width (0.1 to 48 inches)"
+                          />
+                          <span className="text-xs text-gray-500">×</span>
+                          <input
+                            type="number"
+                            className="input w-16 h-7 text-xs text-center border border-gray-300 rounded px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:border-[#6F1414] focus:outline-none"
+                            value={tempHeight}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value) || 0;
+                              handleHeightChange(value);
+                            }}
+                            step="0.1"
+                            min="0.1"
+                            max="48"
+                            title="Canvas height (0.1 to 48 inches)"
+                          />
+                        </>
+                      )}
+                      <button
+                        className={`w-7 h-7 flex items-center justify-center rounded border transition-all duration-200 ${
+                          isAspectRatioLocked
+                            ? 'bg-[#6F1414] text-white border-[#6F1414]'
+                            : 'bg-white text-gray-600 border-gray-300 hover:border-[#6F1414] hover:text-[#6F1414]'
+                        }`}
+                        onClick={handleAspectRatioToggle}
+                        title={isAspectRatioLocked ? 'Unlink dimensions (edit independently)' : 'Link dimensions (change proportionally)'}
+                      >
+                        {isAspectRatioLocked ? (
+                          <Link className="w-3 h-3" />
+                        ) : (
+                          <Link2Off className="w-3 h-3" />
+                        )}
+                      </button>
+                      <span className="text-xs text-[#6F1414] font-medium">
+                        {document.unit.toUpperCase()}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="cursor-pointer hover:text-[#6F1414] hover:underline" onClick={() => setIsEditingSize(true)}>
+                      {document.width} × {document.height} {document.unit}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center py-3 border-b border-[#6F1414] border-opacity-20">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Bleed Area:</span>
+                    <span className="text-xs text-[#6F1414] text-opacity-50">Extra space for printing</span>
+                  </div>
+                  {isEditingSize ? (
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="number"
+                        className="input w-20 h-7 text-xs text-center border border-gray-300 rounded px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:border-[#6F1414] focus:outline-none"
+                        value={tempBleed}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0;
+                          handleBleedChange(value);
+                        }}
+                        step="0.01"
+                        min="0"
+                        title={`Bleed area (minimum 0 ${document.unit})`}
+                      />
+                    </div>
+                  ) : (
+                    <span className="cursor-pointer hover:text-[#6F1414] hover:underline" onClick={() => setIsEditingSize(true)}>
+                      {document.bleed} {document.unit}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center py-3">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Print Resolution:</span>
+                    <span className="text-xs text-[#6F1414] text-opacity-50">DPI (72-600)</span>
+                  </div>
+                  {isEditingSize ? (
+                    <input
+                      type="number"
+                      className="input w-20 h-7 text-xs text-center border border-gray-300 rounded px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:border-[#6F1414] focus:outline-none"
+                      value={tempDpi}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 300;
+                        setTempDpi(value);
+                        debouncedSetDPI(value);
+                      }}
+                      min="72"
+                      max="600"
+                    />
+                  ) : (
+                    <span className="cursor-pointer hover:text-[#6F1414] hover:underline" onClick={() => setIsEditingSize(true)}>
+                      {document.dpi}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Changes apply live - no Apply/Cancel buttons needed */}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="mt-6 space-y-2 mx-2">
+              <button 
+                className="btn w-full text-sm bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white transition-all duration-300 ease-in-out hover:shadow-md"
+                onClick={handleResetView}
+                title="Reset zoom and pan to fit screen (Ctrl+R)"
+              >
+                <RotateCcw className="icon-sm mr-2" />
+                Reset View
+              </button>
+              
+              {/* Brush Tool Button */}
+              <button 
+                className={`btn w-full text-sm transition-all duration-300 ease-in-out hover:shadow-md ${
+                  isBrushCardOpen || activeTool === 'brush'
+                    ? 'bg-[#6F1414] text-white border-[#6F1414] shadow-md' 
+                    : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white'
+                }`}
+                onClick={handleBrushClick}
+                title="Brush Tool (Ctrl+B)"
+              >
+                <Brush className="icon-sm mr-2" />
+                Brush Tool {activeTool === 'brush' && '(Active)'}
+              </button>
+            </div>
+
+            {/* Brush Card */}
+            {isBrushCardOpen && (
+              <div 
+                ref={brushCardRef}
+                className="absolute right-full top-0 mr-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 animate-in slide-in-from-right-4 fade-in duration-300 ease-out"
+                style={{ borderRadius: '0 0 12px 0' }}
+              >
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-[#6F1414]">Brush Settings</h3>
+                    <button 
+                      className="text-gray-400 hover:text-[#6F1414] transition-colors"
+                      onClick={() => setIsBrushCardOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {/* Brush Size */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#6F1414] mb-2">Brush Size</label>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="range" 
+                          min="1" 
+                          max="50" 
+                          value={brushSize}
+                          onChange={(e) => handleBrushSizeChange(parseInt(e.target.value))}
+                          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                        />
+                        <span className="text-xs text-[#6F1414] w-8 text-center">{brushSize}px</span>
+                      </div>
+                    </div>
+
+                    {/* Brush Opacity */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#6F1414] mb-2">Opacity</label>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max="100" 
+                          value={brushOpacity}
+                          onChange={(e) => handleBrushOpacityChange(parseInt(e.target.value))}
+                          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                        />
+                        <span className="text-xs text-[#6F1414] w-8 text-center">{brushOpacity}%</span>
+                      </div>
+                    </div>
+
+                    {/* Brush Types */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#6F1414] mb-2">Brush Type</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button 
+                          className={`btn text-xs py-2 transition-all duration-200 ${
+                            brushType === 'round' 
+                              ? 'bg-[#6F1414] text-white border-[#6F1414]' 
+                              : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white'
+                          }`}
+                          onClick={() => handleBrushTypeChange('round')}
+                        >
+                          Round
+                        </button>
+                        <button 
+                          className={`btn text-xs py-2 transition-all duration-200 ${
+                            brushType === 'square' 
+                              ? 'bg-[#6F1414] text-white border-[#6F1414]' 
+                              : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white'
+                          }`}
+                          onClick={() => handleBrushTypeChange('square')}
+                        >
+                          Square
+                        </button>
+                        <button 
+                          className={`btn text-xs py-2 transition-all duration-200 ${
+                            brushType === 'soft' 
+                              ? 'bg-[#6F1414] text-white border-[#6F1414]' 
+                              : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white'
+                          }`}
+                          onClick={() => handleBrushTypeChange('soft')}
+                        >
+                          Soft
+                        </button>
+                        <button 
+                          className={`btn text-xs py-2 transition-all duration-200 ${
+                            brushType === 'hard' 
+                              ? 'bg-[#6F1414] text-white border-[#6F1414]' 
+                              : 'bg-white text-[#6F1414] border-[#6F1414] hover:bg-[#6F1414] hover:text-white'
+                          }`}
+                          onClick={() => handleBrushTypeChange('hard')}
+                        >
+                          Hard
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Color Picker */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#6F1414] mb-2">Brush Color</label>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="color" 
+                          value={brushColor}
+                          onChange={(e) => handleBrushColorChange(e.target.value)}
+                          className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
+                        />
+                        <input 
+                          type="text" 
+                          value={brushColor}
+                          onChange={(e) => handleBrushColorChange(e.target.value)}
+                          className="input flex-1 text-xs"
+                          placeholder="#6F1414"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick Colors */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#6F1414] mb-2">Quick Colors</label>
+                      <div className="flex gap-1">
+                        {['#6F1414', '#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'].map((color) => (
+                          <button
+                            key={color}
+                            className={`w-6 h-6 rounded border-2 transition-all duration-200 hover:scale-110 ${
+                              brushColor === color 
+                                ? 'border-[#6F1414] scale-110' 
+                                : 'border-gray-300 hover:border-[#6F1414]'
+                            }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => handleQuickColorClick(color)}
+                            title={color}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'quality' && (
+          <div className="h-full overflow-y-auto">
+            <PrintQualityPanel />
+          </div>
+        )}
+
+        {activeTab === 'templates' && (
+          <div className="h-full overflow-y-auto">
+            <TemplatesPanel />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
