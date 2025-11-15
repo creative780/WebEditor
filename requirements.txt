@@ -1,0 +1,1142 @@
+# =============================================================================
+# Web-to-Print Editor - Comprehensive Requirements Specification
+# =============================================================================
+# This document provides a complete specification of all technical dependencies,
+# infrastructure requirements, and feature requirements organized chronologically
+# by development phase. This serves as a complete guide for developers to
+# understand and build the entire project from scratch.
+# =============================================================================
+
+# =============================================================================
+# PART 1: TECHNICAL INFRASTRUCTURE REQUIREMENTS
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# System Requirements
+# -----------------------------------------------------------------------------
+
+# Node.js Runtime
+# - Minimum version: 18.0.0
+# - Required for: Frontend (Next.js) and Backend (Express) applications
+# - Package manager: npm 10.0.0 or higher
+node>=18.0.0
+npm>=10.0.0
+
+# Python Runtime
+# - Minimum version: 3.11.0
+# - Required for: Django backend services
+# - Build system: setuptools>=61.0, wheel
+python>=3.11.0
+setuptools>=61.0
+wheel
+
+# -----------------------------------------------------------------------------
+# Infrastructure Services
+# -----------------------------------------------------------------------------
+
+# PostgreSQL Database
+# - Minimum version: 15.0
+# - Purpose: Primary data storage for designs, users, templates, collaboration data
+# - Port: 5432 (default)
+# - Required tables: designs, design_objects, users, templates, collaboration_sessions, etc.
+postgresql>=15.0
+
+# Redis Cache & Message Queue
+# - Minimum version: 7.0
+# - Purpose: Session management, pub/sub for real-time updates, job queues (Bull)
+# - Port: 6379 (default)
+# - Used for: Caching, real-time event broadcasting, background job processing
+redis>=7.0
+
+# MinIO Object Storage (S3-compatible)
+# - Purpose: File storage for images, exports, assets, thumbnails
+# - Ports: 9000 (API), 9001 (Console)
+# - Bucket: web-to-print (default)
+# - Used for: Image uploads, PDF/PNG/JPG/SVG exports, template thumbnails
+minio>=latest
+
+# -----------------------------------------------------------------------------
+# Frontend Dependencies (Node.js)
+# -----------------------------------------------------------------------------
+
+# Core Framework
+# - Next.js 15.5.0+: React framework with App Router, Server Components
+# - React 18.0.0+: UI library with hooks and concurrent features
+# - TypeScript 5.0.0+: Type safety and modern JavaScript features
+next>=15.5.0
+react>=18.0.0
+react-dom>=18.0.0
+typescript>=5.0.0
+
+# State Management
+# - Zustand 5.0.8+: Lightweight state management for editor state
+# - Store structure: Modular slices (color, document, objects, selection, view, transform, history, templates, UI)
+zustand>=5.0.8
+
+# Canvas & Graphics Rendering
+# - React-Konva 18.2.10+: React bindings for Konva canvas library
+# - Konva 10.0.2+: 2D canvas library for object rendering
+# - OpenType.js 1.3.4+: Font parsing and text rendering
+# - Purpose: Canvas-based visual editor, object rendering, text on path
+react-konva>=18.2.10
+konva>=10.0.2
+opentype.js>=1.3.4
+
+# UI Components & Styling
+# - Tailwind CSS 3.3.0+: Utility-first CSS framework
+# - Lucide React 0.544.0+: Icon library
+# - Tailwind Animate 1.0.7+: Animation utilities
+# - PostCSS 8.0.0+: CSS processing
+# - Autoprefixer 10.0.1+: CSS vendor prefixing
+tailwindcss>=3.3.0
+lucide-react>=0.544.0
+tailwindcss-animate>=1.0.7
+postcss>=8.0.0
+autoprefixer>=10.0.1
+
+# Utilities
+# - TanStack React Query 5.90.2+: Data fetching and caching
+# - TinyColor2 1.6.0+: Color manipulation and conversion
+@tanstack/react-query>=5.90.2
+tinycolor2>=1.6.0
+
+# Type Definitions
+@types/node>=20.0.0
+@types/react>=18.0.0
+@types/react-dom>=18.0.0
+
+# Development Tools
+eslint>=8.0.0
+eslint-config-next>=15.5.0
+
+# -----------------------------------------------------------------------------
+# Backend Dependencies (Node.js/Express)
+# -----------------------------------------------------------------------------
+
+# Core Framework
+# - Express 4.18.2+: Web application framework
+# - TypeScript 5.3.3+: Type safety
+# - TSX 4.7.0+: TypeScript execution for development
+express>=4.18.2
+typescript>=5.3.3
+tsx>=4.7.0
+
+# Real-time Communication
+# - Socket.IO 4.6.1+: WebSocket library for real-time collaboration
+# - Purpose: Live object synchronization, cursor tracking, multi-user editing
+socket.io>=4.6.1
+
+# Database & Cache
+# - pg 8.11.3+: PostgreSQL client for Node.js
+# - redis 4.6.12+: Redis client for caching and pub/sub
+# - bull 4.12.0+: Job queue system built on Redis
+pg>=8.11.3
+redis>=4.6.12
+bull>=4.12.0
+
+# Authentication & Security
+# - bcrypt 5.1.1+: Password hashing
+# - jsonwebtoken 9.0.2+: JWT token generation and verification
+# - cors 2.8.5+: Cross-origin resource sharing
+# - helmet 7.1.0+: Security headers
+# - express-rate-limit 7.1.5+: Rate limiting middleware
+bcrypt>=5.1.1
+jsonwebtoken>=9.0.2
+cors>=2.8.5
+helmet>=7.1.0
+express-rate-limit>=7.1.5
+
+# Utilities
+# - dotenv 16.3.1+: Environment variable management
+# - uuid 9.0.1+: UUID generation
+# - zod 3.22.4+: Schema validation
+# - winston 3.11.0+: Logging framework
+dotenv>=16.3.1
+uuid>=9.0.1
+zod>=3.22.4
+winston>=3.11.0
+
+# Cloud Storage
+# - AWS SDK S3 Client 3.484.0+: S3-compatible storage (MinIO) client
+@aws-sdk/client-s3>=3.484.0
+
+# Image Processing & Graphics
+# - Puppeteer 21.7.0+: Headless Chrome for PDF generation and rendering
+# - Sharp 0.33.1+: High-performance image processing (resize, format conversion)
+# - Paper.js 0.12.17+: Vector graphics library for path operations
+# - OpenType.js 1.3.4+: Font processing and text rendering
+# - Color Convert 2.0.1+: Color space conversion (RGB, CMYK, HSL, etc.)
+puppeteer>=21.7.0
+sharp>=0.33.1
+paper>=0.12.17
+opentype.js>=1.3.4
+color-convert>=2.0.1
+
+# Type Definitions
+@types/express>=4.17.21
+@types/node>=20.10.6
+@types/cors>=2.8.17
+@types/bcrypt>=5.0.2
+@types/jsonwebtoken>=9.0.5
+@types/uuid>=9.0.7
+@types/pg>=8.10.9
+
+# Development Tools
+eslint>=8.56.0
+@typescript-eslint/eslint-plugin>=6.17.0
+@typescript-eslint/parser>=6.17.0
+jest>=29.7.0
+@types/jest>=29.5.11
+
+# -----------------------------------------------------------------------------
+# Backend Dependencies (Python/Django)
+# -----------------------------------------------------------------------------
+
+# Core Framework
+# - Django 5.0.0+: Web framework
+# - Django REST Framework 3.14.0+: REST API toolkit
+# - Django REST Framework Simple JWT 5.3.0+: JWT authentication
+# - Django CORS Headers 4.3.0+: CORS handling
+django>=5.0.0
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.0
+django-cors-headers>=4.3.0
+
+# Real-time & Async
+# - Channels 4.0.0+: WebSocket support for Django
+# - Channels Redis 4.1.0+: Redis channel layer for Channels
+# - Celery 5.3.0+: Distributed task queue
+channels>=4.0.0
+channels-redis>=4.1.0
+celery>=5.3.0
+
+# Database & Cache
+# - psycopg2-binary 2.9.0+: PostgreSQL adapter for Python
+# - redis 5.0.0+: Redis client for Python
+psycopg2-binary>=2.9.0
+redis>=5.0.0
+
+# Storage
+# - Django Storages 1.14.0+: Custom storage backends (S3)
+# - Boto3 1.34.0+: AWS SDK for Python (S3 operations)
+django-storages>=1.14.0
+boto3>=1.34.0
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Server
+gunicorn>=21.2.0
+
+# Development Tools (Optional)
+pytest>=7.4.0
+pytest-django>=4.7.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.5.0
+django-stubs>=4.2.0
+
+# -----------------------------------------------------------------------------
+# Monorepo & Development Tools
+# -----------------------------------------------------------------------------
+
+# Monorepo Management
+# - Turbo 1.10.12+: Build system and task runner for monorepos
+# - Turbo Gen 1.10.12+: Code generation tools
+turbo>=1.10.12
+@turbo/gen>=1.10.12
+
+# Code Quality
+# - Husky 8.0.3+: Git hooks
+# - Lint Staged 15.0.0+: Run linters on staged files
+# - Prettier 3.0.0+: Code formatter
+husky>=8.0.3
+lint-staged>=15.0.0
+prettier>=3.0.0
+
+# =============================================================================
+# PART 2: FEATURE REQUIREMENTS (CHRONOLOGICAL ORDER)
+# =============================================================================
+
+# =============================================================================
+# PHASE 1: CORE EDITOR FOUNDATION
+# =============================================================================
+# Duration: 4-6 weeks
+# Priority: Critical - Foundation for all other features
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# 1.1 Canvas Rendering System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/components/editor/EditorCanvas.tsx
+#       apps/frontend/components/editor/canvas/rendering/renderCanvas.ts
+#       apps/frontend/components/editor/canvas/rendering/renderArtboard.ts
+# 
+# Requirements:
+# - HTML5 Canvas-based visual editor with 60fps rendering performance
+# - Artboard rendering with configurable dimensions (default: 6"x4" = 1800x1200px at 300 DPI)
+# - Canvas background with grid pattern and transparency support
+# - Viewport caching for performance optimization
+# - Coordinate system: Artboard space with zoom and pan support
+# - Default zoom: 100% with 25% view scale for overview
+# - Canvas centering: Artboard centered horizontally and vertically with padding
+# - Background styling: Subtle grid pattern, professional gray background, blue borders, shadows
+
+# -----------------------------------------------------------------------------
+# 1.2 Object Management System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/state/slices/objectsSlice.ts
+#       apps/frontend/components/editor/canvas/drawing/drawText.ts
+#       apps/frontend/components/editor/canvas/drawing/drawShape.ts
+#       apps/frontend/components/editor/canvas/drawing/drawPath.ts
+# 
+# Object Types:
+# - TextObj: Text objects with font, size, alignment, formatting, position, rotation
+# - ShapeObj: Geometric shapes (rectangle, circle, ellipse, polygon, star, arrow, callout, line, heart, gear)
+# - ImageObj: Image objects with upload, crop, filters, position, scale
+# - PathObj: SVG path objects with bezier curve editing
+# 
+# Operations:
+# - Create: Add new objects to canvas (centered on artboard by default)
+# - Update: Modify object properties (position, size, rotation, style, content)
+# - Delete: Remove objects from canvas
+# - Transform: Move, resize, rotate objects with constraints
+# - Auto-selection: New objects automatically selected after creation
+# 
+# Backend API:
+# - POST /api/designs/:id/objects - Create object
+# - PUT /api/designs/:id/objects/:objectId - Update object
+# - DELETE /api/designs/:id/objects/:objectId - Delete object
+# - POST /api/designs/:id/objects/batch - Batch operations
+
+# -----------------------------------------------------------------------------
+# 1.3 Selection System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/state/slices/selectionSlice.ts
+#       apps/frontend/components/editor/canvas/utils/hitDetection.ts
+# 
+# Features:
+# - Single object selection: Click to select individual objects
+# - Multi-object selection: Shift+click or marquee selection for multiple objects
+# - Marquee selection: Click and drag to create selection rectangle
+# - Visual feedback: Selection highlights, transform handles, bounding box
+# - Selection persistence: Maintain selection across operations
+# - Hit detection: Accurate object detection with coordinate conversion
+
+# -----------------------------------------------------------------------------
+# 1.4 Transform Operations
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/state/slices/transformSlice.ts
+#       apps/frontend/components/editor/canvas/drawing/drawTransformHandles.ts
+#       apps/backend/src/services/design/TransformService.ts
+# 
+# Transform Handles:
+# - Corner handles: Resize with proportional scaling (Shift key)
+# - Edge handles: Resize along single axis
+# - Center scaling: Alt key for center-based scaling
+# - Rotation handle: Rotate object with angle display and 15-degree snapping (Shift)
+# - Cursor styles: Different cursors for different handle types (nw-resize, ne-resize, ns-resize, ew-resize, crosshair for rotate, move for dragging)
+# 
+# Transform Operations:
+# - Move: Drag objects within artboard bounds (5-pixel movement threshold)
+# - Resize: Scale objects with constraints (maintain aspect ratio with Shift)
+# - Rotate: Rotate objects with angle display and snapping
+# - Multi-select transform: Transform multiple objects simultaneously with relative positioning
+# - Constraints: Objects cannot be moved outside artboard boundaries
+# 
+# Backend API:
+# - PUT /api/designs/:id/objects/:objectId - Update transform properties (x, y, width, height, rotation)
+
+# -----------------------------------------------------------------------------
+# 1.5 View Controls
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/state/slices/viewSlice.ts
+#       apps/frontend/components/editor/canvas/events/useWheelEvents.ts
+# 
+# Zoom Controls:
+# - Alt+scroll: Zoom in/out with mouse wheel
+# - Zoom range: 10% to 1000%
+# - Zoom to fit: Fit selection or entire canvas
+# - Default zoom: 100% with 25% view scale
+# 
+# Pan Controls:
+# - Middle mouse button: Pan canvas
+# - Alt+drag: Pan canvas with left mouse button
+# - Left-click on empty artboard: Pan artboard
+# - Boundary constraints: Keep artboard visible
+# 
+# View Features:
+# - Rulers: Professional rulers with live cursor tracking, multi-unit support (px, in, cm, mm, ft)
+# - Guides: Smart guides for object alignment
+# - Grid: Customizable grid with snap-to-grid functionality
+# - Fit to screen: Auto-fit canvas to viewport
+
+# -----------------------------------------------------------------------------
+# 1.6 Document Configuration
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/state/slices/documentSlice.ts
+#       apps/frontend/lib/units.ts
+#       apps/backend/src/services/design/DesignService.ts
+# 
+# Document Properties:
+# - Width and height: Configurable dimensions with unit support
+# - Units: px, in, cm, mm, ft with automatic conversion
+# - DPI: Configurable DPI (72, 150, 300, 600) for print quality
+# - Bleed settings: Bleed area configuration for print
+# - Default size: 6"x4" (1800x1200px at 300 DPI)
+# 
+# Unit Conversion:
+# - Automatic conversion between units
+# - Real-time calculation based on DPI
+# - Print quality validation
+# 
+# Backend API:
+# - PUT /api/designs/:id - Update document configuration
+
+# -----------------------------------------------------------------------------
+# 1.7 Real-Time Collaboration Foundation
+# -----------------------------------------------------------------------------
+# Files: apps/backend/src/services/realtime/SocketService.ts
+#       apps/backend/src/services/collaboration/CollaborationService.ts
+#       apps/frontend/components/CursorKit.tsx
+# 
+# WebSocket Infrastructure:
+# - Socket.IO server setup with authentication
+# - Room-based design sessions (one room per design)
+# - Connection recovery and reconnection logic
+# - Heartbeat monitoring for active connections
+# 
+# Real-Time Events:
+# - object.created: Broadcast new object creation
+# - object.updated: Broadcast object property changes
+# - object.deleted: Broadcast object deletion
+# - object.transform: Broadcast transform operations
+# - object.dragged: Broadcast drag and drop position updates
+# - cursor.move: Broadcast cursor positions for multi-user editing
+# 
+# State Synchronization:
+# - Full state sync on connection
+# - Incremental updates for changes
+# - Version vectors for consistency
+# - Conflict-free replicated data types (CRDTs) for merging
+# - State snapshots every N operations
+# 
+# Performance Targets:
+# - Real-time update latency: < 16ms
+# - Object creation: < 50ms
+# - Center-aligned placement on creation
+
+# -----------------------------------------------------------------------------
+# 1.8 History & Undo/Redo System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/state/slices/historySlice.ts
+#       apps/frontend/hooks/useDesignPersistence.ts
+# 
+# History Management:
+# - State snapshots for undo/redo operations
+# - History stack with configurable depth (default: 50 operations)
+# - Undo/redo keyboard shortcuts (Ctrl+Z, Ctrl+Y)
+# - History persistence across sessions
+# 
+# Auto-save:
+# - Automatic design persistence to backend
+# - Configurable auto-save interval (default: 5 seconds)
+# - Optimistic UI updates with backend confirmation
+
+# -----------------------------------------------------------------------------
+# 1.9 Keyboard Shortcuts System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/hooks/useKeyboardShortcuts.ts
+#       apps/frontend/lib/keyboardShortcuts.ts
+# 
+# Shortcuts:
+# - Undo: Ctrl+Z (Cmd+Z on Mac)
+# - Redo: Ctrl+Y or Ctrl+Shift+Z (Cmd+Shift+Z on Mac)
+# - Copy: Ctrl+C (Cmd+C on Mac)
+# - Paste: Ctrl+V (Cmd+V on Mac)
+# - Duplicate: Ctrl+D (Cmd+D on Mac)
+# - Delete: Delete or Backspace
+# - Select All: Ctrl+A (Cmd+A on Mac)
+# - Zoom In: Ctrl+Plus (Cmd+Plus on Mac)
+# - Zoom Out: Ctrl+Minus (Cmd+Minus on Mac)
+# - Fit to Screen: Ctrl+0 (Cmd+0 on Mac)
+# - Pan: Space+drag or Middle mouse button
+
+# =============================================================================
+# PHASE 2: ADVANCED DESIGN TOOLS
+# =============================================================================
+# Duration: 3-4 weeks
+# Priority: High - Professional design capabilities
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# 2.1 Shape Tools Library
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/lib/shapes.ts
+#       apps/frontend/components/editor/panels/ShapesPanel.tsx
+#       apps/backend/src/services/shapes/ShapeService.ts
+# 
+# Basic Shapes:
+# - Rectangle: Rectangular shapes with rounded corners support
+# - Circle: Perfect circles with radius control
+# - Ellipse: Elliptical shapes with independent width/height
+# 
+# Advanced Shapes:
+# - Polygon: Custom polygon with 3-12 sides, point editing
+# - Star: Star shapes with 3-12 points, inner radius control
+# - Arrow: Four arrow styles (simple, double, curved, block)
+# - Callout: Four callout styles (rounded, sharp, cloud, speech)
+# - Line: Straight lines with stroke width and style
+# - Heart: Heart shape with customizable size
+# - Gear: Gear shape with customizable teeth
+# 
+# Shape Operations:
+# - Boolean operations: Union, subtract, intersect, exclude
+# - Path editing: Bezier curve editing for custom shapes
+# - Shape combination: Combine multiple shapes into one
+# 
+# Backend API:
+# - POST /api/shapes/generate - Generate shape with parameters
+# - POST /api/shapes/boolean - Perform boolean operations
+
+# -----------------------------------------------------------------------------
+# 2.2 Text Editor System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/components/editor/panels/text/TextPanel.tsx
+#       apps/frontend/components/editor/panels/text/components/FontSelector.tsx
+#       apps/frontend/components/editor/panels/text/components/TextAlignment.tsx
+#       apps/backend/src/services/text/TextService.ts
+# 
+# Text Properties:
+# - Font selection: System fonts and web fonts with preview
+# - Font size: Slider control with live preview (8px to 200px)
+# - Text alignment: Left, center, right, justify
+# - Text formatting: Bold, italic, underline, strikethrough
+# - Line height: Adjustable line spacing
+# - Letter spacing: Character spacing control
+# - Text color: RGB, CMYK, Pantone color support
+# 
+# Text Effects:
+# - Text shadow: Offset, blur, color
+# - Text outline: Stroke width and color
+# - Text glow: Outer glow effect
+# 
+# Advanced Features:
+# - Bullet points and numbered lists
+# - Text on path: Text following SVG paths
+# - Text wrapping: Automatic text wrapping within bounds
+# 
+# Backend API:
+# - POST /api/text/render - Render text with properties
+# - POST /api/text/measure - Measure text dimensions
+
+# -----------------------------------------------------------------------------
+# 2.3 Image Support System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/components/editor/panels/UploadsPanel.tsx
+#       apps/backend/src/services/export/ExportService.ts
+# 
+# Image Operations:
+# - Upload: Drag and drop or file picker for image upload
+# - Supported formats: JPG, PNG, GIF, WebP, SVG
+# - Image cropping: Crop tool with aspect ratio presets
+# - Image filters: Brightness, contrast, saturation, blur
+# - Image scaling: Maintain aspect ratio or free transform
+# 
+# Storage:
+# - Backend storage: MinIO/S3 for image files
+# - Thumbnail generation: Automatic thumbnail creation
+# - Image optimization: Compression and format conversion
+# 
+# Backend API:
+# - POST /api/uploads/image - Upload image file
+# - GET /api/uploads/image/:id - Get image file
+# - POST /api/uploads/image/:id/crop - Crop image
+
+# -----------------------------------------------------------------------------
+# 2.4 Color Management System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/components/editor/panels/color/ColorPanel.tsx
+#       apps/frontend/components/editor/panels/color/components/RGBControls.tsx
+#       apps/frontend/components/editor/panels/color/components/CMYKControls.tsx
+#       apps/frontend/components/editor/panels/color/components/PantoneSelector.tsx
+#       apps/frontend/lib/colorManagement.ts
+#       apps/backend/src/services/color/ColorService.ts
+#       apps/backend/src/services/color/ColorConversion.ts
+#       apps/backend/src/services/color/PantoneService.ts
+# 
+# Color Modes:
+# - RGB Colors: Screen colors with 0-255 per channel (Red, Green, Blue)
+# - CMYK Colors: Print colors with 0-100% per channel (Cyan, Magenta, Yellow, Black) with independent sliders
+# - Pantone Colors: Industry-standard color matching system with search functionality
+# - HSL Colors: Hue, Saturation, Lightness color space
+# - HEX Colors: Hexadecimal color codes
+# 
+# Color Conversion:
+# - RGB to CMYK: Accurate color space conversion for print
+# - CMYK to RGB: Screen preview of print colors
+# - Color profile support: ICC color profiles for accurate conversion
+# 
+# Color Tools:
+# - Color picker: Advanced color picker with eyedropper tool
+# - Color history: Recent colors system with favorites
+# - Color palette generator: Extract dominant colors from images
+# - Color harmony: 5 harmony schemes (complementary, analogous, triadic, tetradic, monochromatic)
+# - Color accessibility: Print validation and warnings
+# 
+# Gradients:
+# - Linear gradients: Horizontal, vertical, diagonal gradients
+# - Radial gradients: Circular gradients from center
+# - Conic gradients: Angular gradients
+# - Multi-stop gradients: Multiple color stops with position control
+# - Gradient editor: Visual gradient editor with stop management
+# 
+# Backend API:
+# - POST /api/colors/convert - Convert between color spaces
+# - GET /api/colors/pantone - Search Pantone colors
+# - POST /api/colors/palette - Generate color palette from image
+
+# -----------------------------------------------------------------------------
+# 2.5 Layer Management System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/components/editor/panels/layers/LayersPanel.tsx
+#       apps/frontend/components/editor/panels/layers/components/LayerItem.tsx
+#       apps/frontend/components/editor/panels/layers/components/LayerSearch.tsx
+#       apps/backend/src/services/layers/LayerService.ts
+# 
+# Layer Operations:
+# - Show/hide: Toggle layer visibility
+# - Lock/unlock: Prevent accidental layer modifications
+# - Reorder: Drag and drop to change layer order (z-index)
+# - Search: Search layers by name or type
+# - Filter: Filter layers by type (text, shape, image, path)
+# 
+# Layer Grouping:
+# - Group layers: Combine multiple layers into groups
+# - Ungroup layers: Break groups into individual layers
+# - Nested groups: Groups within groups
+# - Group operations: Transform entire groups
+# 
+# Layer Properties:
+# - Opacity: Layer opacity control (0-100%)
+# - Blending modes: 8 blend modes (normal, multiply, screen, overlay, darken, lighten, color-dodge, color-burn)
+# - Layer effects: Drop shadow, inner glow, outer glow with full controls
+# 
+# Z-Index Management:
+# - Automatic z-index assignment on creation
+# - Manual z-index adjustment
+# - Layer stacking order visualization
+# 
+# Backend API:
+# - PUT /api/layers/:id/visibility - Toggle layer visibility
+# - PUT /api/layers/:id/lock - Toggle layer lock
+# - PUT /api/layers/reorder - Reorder layers
+# - POST /api/layers/group - Create layer group
+# - POST /api/layers/ungroup - Ungroup layers
+
+# -----------------------------------------------------------------------------
+# 2.6 Snap System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/lib/snap.ts
+# 
+# Snap Features:
+# - Snap to grid: Snap objects to grid intersections
+# - Snap to guides: Snap objects to guide lines
+# - Snap to objects: Snap objects to other object edges and centers
+# - Snap tolerance: Configurable snap distance (default: 5px)
+# - Smart guides: Visual guides showing alignment
+# - Object edge detection: Detect object edges for snapping
+
+# -----------------------------------------------------------------------------
+# 2.7 Alignment & Distribution Tools
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/lib/transform.ts
+# 
+# Alignment Tools:
+# - Align to canvas: Align objects to canvas edges and center
+# - Align to selection: Align objects relative to selection bounds
+# - Align to guides: Align objects to guide lines
+# - Alignment options: Left, center, right, top, middle, bottom
+# 
+# Distribution Tools:
+# - Horizontal distribution: Even spacing along horizontal axis
+# - Vertical distribution: Even spacing along vertical axis
+# - Both axis distribution: Even spacing in both directions
+# - Spacing calculation: Automatic spacing calculation
+
+# =============================================================================
+# PHASE 3: PERFORMANCE & USER EXPERIENCE
+# =============================================================================
+# Duration: 2-3 weeks
+# Priority: High - Smooth user experience
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# 3.1 Performance Optimization
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/lib/canvasCache.ts
+#       apps/frontend/lib/memoryManager.ts
+#       apps/frontend/lib/performanceMonitor.ts
+#       apps/frontend/lib/virtualization.ts
+# 
+# Rendering Optimization:
+# - Viewport caching: Cache rendered objects outside viewport
+# - Dirty region rendering: Only re-render changed areas
+# - Request animation frame: 60fps rendering with requestAnimationFrame
+# - Canvas clearing: Efficient canvas clearing and redrawing
+# 
+# Memory Management:
+# - Object pooling: Reuse object instances
+# - Memory monitoring: Track memory usage and cleanup
+# - Garbage collection: Optimize garbage collection patterns
+# 
+# Performance Monitoring:
+# - FPS monitoring: Track frame rate (target: 60fps)
+# - Render time tracking: Measure render performance
+# - Performance metrics: Collect performance data
+# 
+# Virtualization:
+# - Virtual scrolling: Only render visible layers
+# - Lazy loading: Load objects on demand
+
+# -----------------------------------------------------------------------------
+# 3.2 Backend Caching System
+# -----------------------------------------------------------------------------
+# Files: apps/backend/src/services/cache/CacheService.ts
+# 
+# Caching Strategy:
+# - Redis caching: Cache design data, templates, user sessions
+# - Cache invalidation: Smart cache invalidation on updates
+# - Cache warming: Pre-load frequently accessed data
+# - Thumbnail caching: Cache generated thumbnails
+# 
+# Performance Targets:
+# - Design load time: < 200ms
+# - Template load time: < 100ms
+# - Cache hit rate: > 80%
+
+# -----------------------------------------------------------------------------
+# 3.3 Background Job Processing
+# -----------------------------------------------------------------------------
+# Files: apps/backend/src/services/queue/QueueService.ts
+#       apps/backend/src/workers/exportWorker.ts
+# 
+# Job Queue System:
+# - Bull queue: Redis-based job queue
+# - Export workers: Background workers for PDF/PNG/JPG/SVG export
+# - Job status tracking: Track job progress and status
+# - Error handling: Retry failed jobs with exponential backoff
+# 
+# Export Processing:
+# - PDF generation: Puppeteer-based PDF generation
+# - Image processing: Sharp-based image processing
+# - Batch exports: Process multiple exports in parallel
+# - Progress updates: Real-time progress updates via WebSocket
+
+# -----------------------------------------------------------------------------
+# 3.4 User Interface Enhancements
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/components/editor/Toolbar.tsx
+#       apps/frontend/components/editor/FloatingToolbar.tsx
+#       apps/frontend/components/editor/ContextMenu.tsx
+# 
+# UI Components:
+# - Toolbar: Top toolbar with tool selection and document controls
+# - Floating toolbar: Context-sensitive floating toolbar for selected objects
+# - Context menu: Right-click context menu with object operations
+# - Left rail: Left sidebar with tool palette
+# - Right panel: Right sidebar with property panels (color, text, layers, export, templates, collaboration)
+# 
+# Animations:
+# - Smooth transitions: CSS transitions for UI elements
+# - Micro-interactions: Hover effects and button animations
+# - Loading states: Loading indicators for async operations
+# 
+# Error Handling:
+# - Error boundaries: React error boundaries for error recovery
+# - Error messages: User-friendly error messages
+# - Error logging: Log errors to backend for debugging
+
+# =============================================================================
+# PHASE 4: ADVANCED FEATURES
+# =============================================================================
+# Duration: 3-4 weeks
+# Priority: Medium - Advanced workflows
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# 4.1 Template Management System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/lib/templates.ts
+#       apps/frontend/state/slices/templatesSlice.ts
+#       apps/frontend/components/editor/panels/TemplatesPanel.tsx
+#       apps/backend/src/services/templates/TemplateService.ts
+#       apps/backend/src/routes/templates.ts
+# 
+# Template Operations:
+# - Create template: Save current design as template
+# - Browse templates: Browse saved templates with thumbnails
+# - Apply template: Load template into current design
+# - Delete template: Remove templates
+# - Update template: Modify existing templates
+# 
+# Template Storage:
+# - Local storage: Browser local storage for quick access
+# - Backend API: Server-side template storage
+# - Template versioning: Unlimited versions per template
+# 
+# Template Features:
+# - Template categories: Organize templates by category
+# - Template tags: Tag templates for search
+# - Template search: Full-text search across templates
+# - Template filters: Filter by category, tags, date
+# - Template thumbnails: Auto-generated thumbnails
+# 
+# Template Sharing:
+# - Share links: Generate shareable links with expiration
+# - Public templates: Make templates publicly available
+# - Template marketplace: Browse and download community templates
+# - Analytics tracking: Track template views, uses, downloads
+# 
+# Backend API:
+# - POST /api/templates - Create template
+# - GET /api/templates - List templates
+# - GET /api/templates/:id - Get template
+# - PUT /api/templates/:id - Update template
+# - DELETE /api/templates/:id - Delete template
+# - POST /api/templates/:id/share - Generate share link
+# - GET /api/templates/:id/analytics - Get template analytics
+# 
+# Database Schema:
+# - templates table: id, user_id, name, description, category, tags, thumbnail_url, design_data, version, created_at, updated_at
+# - template_versions table: id, template_id, version, design_data, created_at
+# - template_shares table: id, template_id, share_token, expires_at, created_at
+# - template_analytics table: id, template_id, event_type, created_at
+
+# -----------------------------------------------------------------------------
+# 4.2 Real-Time Collaboration System
+# -----------------------------------------------------------------------------
+# Files: apps/backend/src/services/collaboration/CollaborationService.ts
+#       apps/backend/src/routes/collaboration.ts
+#       apps/frontend/components/CursorKit.tsx
+# 
+# Collaboration Features:
+# - Multi-user editing: Multiple users editing same design simultaneously
+# - Cursor tracking: Real-time cursor positions for all users
+# - User presence: Show active users in design session
+# - Live updates: All changes broadcast to all connected clients
+# 
+# User Management:
+# - Invite users: Invite users to collaborate on design
+# - Remove users: Remove users from collaboration session
+# - User roles: Owner, Editor, Viewer permissions
+# - Permission system: Control who can edit, view, or manage design
+# 
+# Comment System:
+# - Comment threads: Add comments to specific objects or canvas areas
+# - Comment resolution: Mark comments as resolved
+# - Comment notifications: Notify users of new comments
+# - Comment history: Track comment history
+# 
+# Version Control:
+# - Version snapshots: Create snapshots of design at specific points
+# - Version restore: Restore design to previous version
+# - Version history: View all versions of design
+# - Change tracking: Track all changes with timestamps
+# 
+# Backend API:
+# - POST /api/collaboration/invite - Invite user to design
+# - DELETE /api/collaboration/remove - Remove user from design
+# - GET /api/collaboration/users - Get active users in design
+# - POST /api/collaboration/comments - Add comment
+# - PUT /api/collaboration/comments/:id/resolve - Resolve comment
+# - POST /api/collaboration/versions - Create version snapshot
+# - POST /api/collaboration/versions/:id/restore - Restore version
+# 
+# Database Schema:
+# - collaboration_sessions table: id, design_id, user_id, role, joined_at, last_active
+# - comments table: id, design_id, user_id, object_id, content, position, resolved, created_at
+# - design_versions table: id, design_id, version, snapshot_data, created_by, created_at
+
+# -----------------------------------------------------------------------------
+# 4.3 Export System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/lib/export.ts
+#       apps/frontend/components/editor/panels/ExportPanel.tsx
+#       apps/backend/src/services/export/ExportService.ts
+#       apps/backend/src/routes/exports.ts
+# 
+# Export Formats:
+# - PDF: High-quality PDF export with print settings
+# - PNG: Raster image export with transparency support
+# - JPG: JPEG export with quality control
+# - SVG: Vector SVG export for scalable graphics
+# 
+# Export Quality Presets:
+# - Web (72 DPI): Optimized for web display
+# - Draft (150 DPI): Quick preview quality
+# - Print (300 DPI): Standard print quality
+# - High-res (600 DPI): High-resolution print quality
+# 
+# Print Features:
+# - Bleed areas: Configurable bleed area for print
+# - Crop marks: Add crop marks for print cutting
+# - Transparency: Support transparent backgrounds
+# - Color profiles: ICC color profile support
+# 
+# Export History:
+# - Export tracking: Track last 50 exports
+# - Export metadata: Store export settings and timestamps
+# - Quick re-export: Re-export with same settings
+# 
+# Backend API:
+# - POST /api/exports - Create export job
+# - GET /api/exports/:id - Get export status
+# - GET /api/exports/:id/download - Download exported file
+# - GET /api/exports/history - Get export history
+# 
+# Database Schema:
+# - export_jobs table: id, design_id, format, quality, status, file_url, created_at, completed_at
+# - export_history table: id, design_id, format, quality, file_url, created_at
+
+# =============================================================================
+# PHASE 5: AI & AUTOMATION
+# =============================================================================
+# Duration: 2-3 weeks
+# Priority: Medium - Intelligent features
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# 5.1 AI Design Assistant
+# -----------------------------------------------------------------------------
+# Files: apps/backend/src/services/ai/AIService.ts
+#       apps/backend/src/services/ai/LayoutSuggestions.ts
+#       apps/backend/src/services/ai/ColorPalette.ts
+#       apps/backend/src/services/ai/ContentSuggestions.ts
+# 
+# AI Integration:
+# - OpenAI API integration: Connect to OpenAI for AI features
+# - Custom model hosting: Support for custom AI models
+# - Prompt engineering: Optimized prompts for design tasks
+# - Response caching: Cache AI responses for performance
+# - Rate limiting: Control AI API usage
+# 
+# Auto-Layout:
+# - Object placement suggestions: AI-suggested object positions
+# - Spacing optimization: Optimal spacing between objects
+# - Alignment recommendations: AI-suggested alignments
+# - Balance analysis: Visual balance analysis
+# - Golden ratio application: Apply golden ratio principles
+# 
+# Color Intelligence:
+# - Palette generation: Generate color palettes from images
+# - Color harmony suggestions: AI-suggested color harmonies
+# - Brand color extraction: Extract brand colors from logos
+# - Accessibility checking: Check color contrast for accessibility
+# - Trend-based palettes: Generate palettes based on current trends
+# 
+# Content Generation:
+# - Text suggestions: AI-generated text content
+# - Image suggestions: AI-suggested images
+# - Design variations: Generate design variations
+# - Style suggestions: AI-suggested design styles
+# 
+# Backend API:
+# - POST /api/ai/layout/suggest - Get layout suggestions
+# - POST /api/ai/color/palette - Generate color palette
+# - POST /api/ai/content/suggest - Get content suggestions
+# - POST /api/ai/analyze - Analyze design and provide suggestions
+
+# -----------------------------------------------------------------------------
+# 5.2 Automation & Batch Processing
+# -----------------------------------------------------------------------------
+# Files: apps/backend/src/services/automation/AutomationService.ts
+#       apps/backend/src/services/automation/BatchService.ts
+#       apps/backend/src/services/automation/WorkflowService.ts
+# 
+# Batch Operations:
+# - Batch export: Export multiple designs simultaneously
+# - Batch update: Update multiple designs at once
+# - Batch delete: Delete multiple designs
+# - Progress tracking: Track batch operation progress
+# 
+# Workflow Automation:
+# - Automated workflows: Define automated design workflows
+# - Trigger system: Event-based workflow triggers
+# - Action system: Automated actions (export, share, notify)
+# - Workflow templates: Pre-built workflow templates
+# 
+# Quality Validation:
+# - Automated quality checks: Check designs for quality issues
+# - Print validation: Validate designs for print readiness
+# - Color validation: Check color profiles and conversions
+# - Resolution validation: Check image resolutions
+# 
+# Backend API:
+# - POST /api/automation/batch/export - Batch export designs
+# - POST /api/automation/batch/update - Batch update designs
+# - POST /api/automation/workflows - Create workflow
+# - POST /api/automation/validate - Validate design quality
+
+# =============================================================================
+# PHASE 6: PLUGIN SYSTEM & INTEGRATION
+# =============================================================================
+# Duration: 2-3 weeks
+# Priority: Low - Extensibility
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# 6.1 Plugin System
+# -----------------------------------------------------------------------------
+# Files: apps/frontend/lib/plugins.ts
+#       apps/frontend/lib/pluginSecurity.ts
+#       apps/frontend/components/editor/PluginManager.tsx
+#       apps/backend/src/services/plugins/PluginService.ts
+# 
+# Plugin Architecture:
+# - Plugin SDK: Complete SDK for plugin development
+# - Plugin API: API for plugins to interact with editor
+# - Plugin lifecycle: Load, initialize, execute, unload
+# - Plugin events: Event system for plugin communication
+# 
+# Plugin Security:
+# - Sandboxed execution: Isolated plugin execution environment
+# - Plugin validation: Validate plugins before loading
+# - Permission system: Control plugin permissions
+# - Security scanning: Scan plugins for security issues
+# 
+# Plugin Marketplace:
+# - Plugin discovery: Browse and search plugins
+# - Plugin installation: Install plugins from marketplace
+# - Plugin updates: Automatic plugin updates
+# - Plugin ratings: Rate and review plugins
+# 
+# Performance Monitoring:
+# - Plugin performance: Monitor plugin performance
+# - Resource usage: Track plugin resource usage
+# - Performance metrics: Collect plugin performance data
+# 
+# Backend API:
+# - GET /api/plugins - List available plugins
+# - POST /api/plugins/install - Install plugin
+# - DELETE /api/plugins/:id - Uninstall plugin
+# - GET /api/plugins/:id/performance - Get plugin performance metrics
+
+# -----------------------------------------------------------------------------
+# 6.2 Integration APIs
+# -----------------------------------------------------------------------------
+# Files: apps/backend/src/services/integrations/IntegrationService.ts
+#       apps/backend/src/services/integrations/WebhookService.ts
+#       apps/backend/src/services/integrations/OAuthService.ts
+# 
+# Webhook System:
+# - Webhook registration: Register webhooks for events
+# - Webhook delivery: Deliver webhooks to registered URLs
+# - Webhook retry: Retry failed webhook deliveries
+# - Webhook security: Secure webhook delivery with signatures
+# 
+# OAuth Integration:
+# - OAuth providers: Support for Google, GitHub, etc.
+# - OAuth authentication: Authenticate users via OAuth
+# - OAuth token management: Manage OAuth tokens
+# 
+# Third-Party Integrations:
+# - Design tool integrations: Integrate with other design tools
+# - Cloud storage integrations: Integrate with cloud storage services
+# - Social media integrations: Share designs to social media
+# 
+# Backend API:
+# - POST /api/webhooks - Register webhook
+# - DELETE /api/webhooks/:id - Unregister webhook
+# - POST /api/integrations/oauth - OAuth authentication
+# - GET /api/integrations/providers - List integration providers
+
+# =============================================================================
+# PART 3: CODE MODULARIZATION REQUIREMENTS
+# =============================================================================
+# Priority: Medium - Code maintainability
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# EditorCanvas.tsx Refactoring
+# -----------------------------------------------------------------------------
+# Current: 4136 lines in single file
+# Target: ~300 lines orchestrator with modular components
+# 
+# Extraction Requirements:
+# - Drawing functions: Extract drawTextObject, drawShapeObject, drawPathObject, drawRulers (~1200 lines)
+#   - Location: apps/frontend/components/editor/canvas/drawing/
+# - Event handlers: Extract mouse, keyboard, touch, wheel handlers (~1400 lines)
+#   - Location: apps/frontend/components/editor/canvas/events/
+# - Rendering logic: Extract renderCanvas, renderArtboard (~600 lines)
+#   - Location: apps/frontend/components/editor/canvas/rendering/
+# - Hooks: Extract useEffect and custom hooks (~500 lines)
+#   - Location: apps/frontend/components/editor/canvas/hooks/
+# - Main orchestrator: Keep only component structure and hook calls (~300 lines)
+
+# -----------------------------------------------------------------------------
+# Other Large Files Modularization
+# -----------------------------------------------------------------------------
+# - PluginManager.tsx: Break down 790 lines file into components
+# - FloatingToolbar.tsx: Break down 547 lines file into components
+# - ColorPanel.tsx: Further modularize 526 lines file
+
+# =============================================================================
+# PART 4: TESTING & QUALITY REQUIREMENTS
+# =============================================================================
+# Priority: High - Code quality and reliability
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Testing Requirements
+# -----------------------------------------------------------------------------
+# - Unit tests: Test individual functions and components
+#   - Target coverage: 90%+
+#   - Framework: Jest for Node.js, React Testing Library for React
+# - Integration tests: Test API endpoints and services
+#   - Framework: Jest with Supertest
+# - End-to-end tests: Test complete user workflows
+#   - Framework: Playwright or Cypress
+# - Performance tests: Load testing and performance benchmarking
+#   - Framework: Artillery or k6
+
+# -----------------------------------------------------------------------------
+# Quality Requirements
+# -----------------------------------------------------------------------------
+# - Code quality: ESLint, Prettier, TypeScript strict mode
+# - Accessibility: WCAG 2.1 AA compliance
+# - Performance: 60fps rendering, < 100ms API response time
+# - Security: Security scanning, dependency updates
+# - Documentation: Complete API documentation, user guides, developer guides
+
+# =============================================================================
+# PART 5: DEPLOYMENT & INFRASTRUCTURE REQUIREMENTS
+# =============================================================================
+# Priority: High - Production readiness
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Deployment Requirements
+# -----------------------------------------------------------------------------
+# - Docker containers: Containerized applications
+# - Docker Compose: Local development environment
+# - Environment variables: Configuration via environment variables
+# - Health checks: Health check endpoints for monitoring
+# - Logging: Centralized logging system
+# - Monitoring: Application performance monitoring
+# - Backup: Automated database backups
+
+# -----------------------------------------------------------------------------
+# Infrastructure Requirements
+# -----------------------------------------------------------------------------
+# - Database: PostgreSQL 15+ with replication
+# - Cache: Redis 7+ with persistence
+# - Storage: MinIO or S3-compatible storage
+# - CDN: Content delivery network for static assets
+# - Load balancing: Load balancer for high availability
+# - Auto-scaling: Auto-scaling based on load
+
+# =============================================================================
+# END OF REQUIREMENTS SPECIFICATION
+# =============================================================================

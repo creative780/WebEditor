@@ -1,0 +1,4306 @@
+'use client';
+
+import { useRef, useEffect, useState, useCallback } from 'react';
+import { useEditorStore } from '../../state/useEditorStore';
+import type {
+  TextObj,
+  ImageObj,
+  ShapeObj,
+  PathObj,
+} from '../../state/useEditorStore';
+import { FloatingToolbar } from './FloatingToolbar';
+import { ColorModeConversionCard } from './ColorModeConversionCard';
+
+export function EditorCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Get store state
+  const { panX, panY, setPan } = useEditorStore();
+  const [isClient, setIsClient] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
+
+  // View scale factor for default 25% view (while keeping zoom value at 100%)
+  const defaultViewScale = 0.25; // 25% view by default
+  const [isPanning, setIsPanning] = useState(false);
+  // Removed local panOffset - now using store panX/panY exclusively
+  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
+  const pendingPanRef = useRef({ x: 0, y: 0 });
+  const panFrameRef = useRef<number | null>(null);
+  // CRITICAL: Use refs for mouse state to persist across re-renders
+  const isMouseDownRef = useRef(false);
+  const isDraggingObjectRef = useRef(false);
+  const [isTextEditing, setIsTextEditing] = useState(false);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [isDraggingText, setIsDraggingText] = useState(false);
+  const [textDragStart, setTextDragStart] = useState({ x: 0, y: 0 });
+  const [textDragEnd, setTextDragEnd] = useState({ x: 0, y: 0 });
+  const [isTextDragMode, setIsTextDragMode] = useState(false);
+
+  // Transform handle interaction state
+  const [isTransforming, setIsTransforming] = useState(false);
+  const [transformHandle, setTransformHandle] = useState<string | null>(null);
+  const [transformStart, setTransformStart] = useState({ x: 0, y: 0 });
+  const [transformOrigin, setTransformOrigin] = useState({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  });
+  const [currentRotation, setCurrentRotation] = useState(0);
+
+  // Marquee selection state
+  const [isMarqueeSelecting, setIsMarqueeSelecting] = useState(false);
+  const [marqueeStart, setMarqueeStart] = useState({ x: 0, y: 0 });
+  const [marqueeEnd, setMarqueeEnd] = useState({ x: 0, y: 0 });
+
+  // Viewport caching for performance
+  const [viewportCache, setViewportCache] = useState<{
+    imageData: ImageData | null;
+    zoom: number;
+    panX: number;
+    panY: number;
+    backgroundType: string;
+    backgroundColor: string;
+    backgroundOpacity: number;
+    backgroundGridSize: number;
+  }>({
+    imageData: null,
+    zoom: 0,
+    panX: 0,
+    panY: 0,
+    backgroundType: '',
+    backgroundColor: '',
+    backgroundOpacity: 0,
+    backgroundGridSize: 0,
+  });
+
+  // Mouse position for cursor detection
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+  // Performance optimization - track if render is needed for live updates
+  const [needsRender, setNeedsRender] = useState(true);
+
+  // Subscribe to store changes for live updates
+  useEffect(() => {
+    // Subscribe to objects array changes - subscribeWithSelector handles reactivity
+    // This ensures drag operations trigger immediate visual updates
+    let previousObjects:
+      | (TextObj | ImageObj | ShapeObj | PathObj)[]
+      | undefined;
+    let renderScheduled = false;
+
+    const unsubscribe = useEditorStore.subscribe(
+      (state) => state.objects,
+      (objects) => {
+        // Check if objects reference actually changed (immutable updates create new array)
+        // This is critical for drag operations - new array reference means position changed
+        if (objects !== previousObjects) {
+          previousObjects = objects;
+
+          // Throttle renders to prevent excessive re-renders
+          if (!renderScheduled) {
+            renderScheduled = true;
+            requestAnimationFrame(() => {
+              setNeedsRender(true); // Trigger render when objects change
+              // force base-layer redraw (objects)
+              setViewportCache((prev) => ({ ...prev, imageData: null }));
+              renderScheduled = false;
+            });
+          }
+        }
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to zoom changes to trigger re-render
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe(
+      (state) => state.zoom,
+      () => {
+        setNeedsRender(true); // Trigger render when zoom changes
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to pan changes to trigger re-render
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe(
+      (state) => [state.panX, state.panY],
+      () => {
+        setNeedsRender(true); // Trigger render when pan changes
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to selection changes to trigger re-render
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe(
+      (state) => state.selection,
+      () => {
+        setNeedsRender(true); // Trigger render when selection changes
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  // CRITICAL: Subscribe to objects array changes to trigger re-render during drag
+  // This ensures visual updates happen immediately when object positions change
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe(
+      (state) => state.objects,
+      () => {
+        // Always trigger render when objects change - critical for drag operations
+        // The render function will check if we need to use cache or redraw
+        setNeedsRender(true);
+        // DON'T log here - this fires constantly during drag
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  // Object dragging state
+  const [isDraggingObject, setIsDraggingObject] = useState(false);
+  const [isMouseDown, setIsMouseDown] = useState(false);
+  const [hasMovedEnough, setHasMovedEnough] = useState(false); // Track if mouse moved enough to start drag
+
+  // Artboard dragging state
+  const [isDraggingArtboard, setIsDraggingArtboard] = useState(false);
+  const [artboardDragStart, setArtboardDragStart] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [initialMousePos, setInitialMousePos] = useState({ x: 0, y: 0 }); // Track initial mouse position for threshold
+
+  // Drag threshold constant (5 pixels)
+  const DRAG_THRESHOLD = 5;
+
+  // Live cursor tracking for ruler indicators
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+  const [showCursorIndicators, setShowCursorIndicators] = useState(true);
+
+  // Get store values
+  const documentWidth = useEditorStore((state) => state.document.width);
+  const documentHeight = useEditorStore((state) => state.document.height);
+  const documentUnit = useEditorStore((state) => state.document.unit);
+  const documentBleed = useEditorStore((state) => state.document.bleed);
+  const documentDpi = useEditorStore((state) => state.document.dpi);
+  const zoom = useEditorStore((state) => state.zoom);
+  const activeTool = useEditorStore((state) => state.activeTool);
+  const needsColorModeConversion = useEditorStore(
+    (state) => state.needsColorModeConversion
+  );
+  const projectColorMode = useEditorStore((state) => state.projectColorMode);
+  const targetColorMode = useEditorStore((state) => state.targetColorMode);
+  const convertProjectToColorMode = useEditorStore(
+    (state) => state.convertProjectToColorMode
+  );
+  const selectedObjects = useEditorStore((state) => state.selection);
+  const objects = useEditorStore((state) => state.objects);
+  const canvasBackground = useEditorStore((state) => state.canvasBackground);
+  const showLeftPanel = useEditorStore((state) => state.showLeftPanel);
+  const showRightPanel = useEditorStore((state) => state.showRightPanel);
+
+  // Set client-side flag and handle resize
+  useEffect(() => {
+    setIsClient(true);
+
+    // Calculate canvas size based on panel visibility
+    const calculateCanvasSize = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const leftPanelWidth = showLeftPanel ? 80 : 0; // Left panel width when visible
+        const rightPanelWidth = showRightPanel ? 300 : 0; // Right panel width when visible
+        const topBarHeight = 60; // Top toolbar height
+
+        setCanvasSize({
+          width: Math.max(
+            rect.width - leftPanelWidth - rightPanelWidth || 1200,
+            1200
+          ),
+          height: Math.max(rect.height - topBarHeight || 800, 800),
+        });
+      }
+    };
+
+    // Set initial size
+    calculateCanvasSize();
+
+    // Handle window resize
+    const handleResize = () => {
+      calculateCanvasSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // Use ResizeObserver for more accurate resizing
+    const resizeObserver = new ResizeObserver(handleResize);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  // Recalculate canvas size when panel visibility changes
+  useEffect(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const leftPanelWidth = showLeftPanel ? 80 : 0; // Left panel width when visible
+      const rightPanelWidth = showRightPanel ? 300 : 0; // Right panel width when visible
+      const topBarHeight = 60; // Top toolbar height
+
+      setCanvasSize({
+        width: Math.max(
+          rect.width - leftPanelWidth - rightPanelWidth || 1200,
+          1200
+        ),
+        height: Math.max(rect.height - topBarHeight || 800, 800),
+      });
+    }
+  }, [showLeftPanel, showRightPanel]);
+
+  // Note: Removed auto-centering to allow free artboard positioning
+  // The artboard can now be manually positioned anywhere in the canvas
+  // useEffect(() => {
+  //   useEditorStore.getState().centerArtboard();
+  //   }, []);
+
+  // Cleanup animation frame on component unmount
+  useEffect(() => {
+    return () => {
+      if (panFrameRef.current) {
+        cancelAnimationFrame(panFrameRef.current);
+      }
+    };
+  }, []);
+
+  // Add event listener for ruler toggle
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleToggleRulerIndicators = () => {
+      setShowCursorIndicators((prev) => !prev);
+    };
+
+    canvas.addEventListener(
+      'toggleRulerIndicators',
+      handleToggleRulerIndicators
+    );
+
+    return () => {
+      canvas.removeEventListener(
+        'toggleRulerIndicators',
+        handleToggleRulerIndicators
+      );
+    };
+  }, []);
+
+  // Auto-focus on selected shape - DISABLED to keep artboard fixed
+  // The artboard now remains in place while shapes can move freely within it
+  // useEffect(() => {
+  //   // Don't auto-focus while dragging, transforming, or during other interactions
+  //   if (isDraggingObject || isTransforming || isPanning || isMarqueeSelecting)
+  //     return;
+
+  //   // Only focus when there's a single selected object and canvas is ready
+  //   if (selectedObjects.length !== 1 || !canvasRef.current) return;
+
+  //   const selectedId = selectedObjects[0];
+  //   const selectedObj = objects.find((obj) => obj.id === selectedId);
+
+  //   if (!selectedObj) return;
+
+  //   // Calculate the center of the selected object in document coordinates (inches)
+  //   const objCenterX = selectedObj.x + selectedObj.width / 2;
+  //   const objCenterY = selectedObj.y + selectedObj.height / 2;
+
+  //   // Convert to pixels
+  //   const objCenterXPx = objCenterX * documentDpi;
+  //   const objCenterYPx = objCenterY * documentDpi;
+
+  //   // Calculate artboard dimensions
+  //   const ARTBOARD_WIDTH = 1800; // 6 * 300 DPI
+  //   const ARTBOARD_HEIGHT = 1200; // 4 * 300 DPI
+
+  //   // Get canvas center
+  //   const canvasCenterX = canvasRef.current.width / 2;
+  //   const canvasCenterY = canvasRef.current.height / 2;
+
+  //   const effectiveZoom = zoom * defaultViewScale;
+
+  //   // Calculate the pan needed to center the object in the viewport
+  //   // Default artboard position (centered): artboardX = canvasCenterX - (ARTBOARD_WIDTH * effectiveZoom) / 2
+  //   // Object position on canvas: artboardX + (objCenterXPx * effectiveZoom)
+  //   // We want object center at canvas center: artboardX + (objCenterXPx * effectiveZoom) = canvasCenterX
+
+  //   // The artboard rendering position is: canvasCenterX - ARTBOARD_WIDTH/2 + panX (at view scale)
+  //   // We need: (canvasCenterX - ARTBOARD_WIDTH * effectiveZoom / 2 + panX * effectiveZoom) + objCenterXPx * effectiveZoom = canvasCenterX
+  //   // Solving: panX * effectiveZoom = canvasCenterX - canvasCenterX + ARTBOARD_WIDTH * effectiveZoom / 2 - objCenterXPx * effectiveZoom
+  //   // panX = (ARTBOARD_WIDTH / 2 - objCenterXPx * effectiveZoom) / effectiveZoom
+  //   // panX = ARTBOARD_WIDTH / 2 / effectiveZoom - objCenterXPx
+
+  //   // Actually, looking at the rendering code, artboard position is:
+  //   // artboardX = canvasCenterX - ARTBOARD_WIDTH / 2 + panX (panX is in canvas pixels, not scaled)
+  //   // Object renders at: artboardX + objCenterXPx * effectiveZoom
+  //   // Want: artboardX + objCenterXPx * effectiveZoom = canvasCenterX
+  //   // So: canvasCenterX - ARTBOARD_WIDTH / 2 + panX + objCenterXPx * effectiveZoom = canvasCenterX
+  //   // panX = ARTBOARD_WIDTH / 2 - objCenterXPx * effectiveZoom
+
+  //   const newPanX =
+  //     (ARTBOARD_WIDTH * effectiveZoom) / 2 - objCenterXPx * effectiveZoom;
+  //   const newPanY =
+  //     (ARTBOARD_HEIGHT * effectiveZoom) / 2 - objCenterYPx * effectiveZoom;
+
+  //   // Update pan to center the selected object
+  //   setPan(newPanX, newPanY);
+  // }, [
+  //   selectedObjects,
+  //   isDraggingObject,
+  //   isTransforming,
+  //   isPanning,
+  //   isMarqueeSelecting,
+  // ]);
+
+  // Convert units to pixels
+  const convertToPixels = (value: number, unit: string, dpi: number) => {
+    switch (unit) {
+      case 'in':
+        return value * dpi;
+      case 'mm':
+        return (value / 25.4) * dpi;
+      case 'px':
+      default:
+        return value;
+    }
+  };
+
+  // Enhanced unit conversion system for professional ruler measurements
+  const convertToUnit = (
+    pixels: number,
+    fromUnit: string,
+    toUnit: string,
+    dpi: number
+  ) => {
+    // Convert to base pixels first
+    let basePixels = pixels;
+    switch (fromUnit) {
+      case 'in':
+        basePixels = pixels * dpi;
+        break;
+      case 'cm':
+        basePixels = pixels * (dpi / 2.54);
+        break;
+      case 'mm':
+        basePixels = pixels * (dpi / 25.4);
+        break;
+      case 'ft':
+        basePixels = pixels * (dpi * 12);
+        break;
+      case 'px':
+        basePixels = pixels;
+        break;
+    }
+
+    // Convert to target unit
+    switch (toUnit) {
+      case 'in':
+        return basePixels / dpi;
+      case 'cm':
+        return basePixels / (dpi / 2.54);
+      case 'mm':
+        return basePixels / (dpi / 25.4);
+      case 'ft':
+        return basePixels / (dpi * 12);
+      case 'px':
+        return basePixels;
+      default:
+        return basePixels;
+    }
+  };
+
+  // Format unit value with appropriate precision
+  const formatUnitValue = (value: number, unit: string) => {
+    // Always show whole numbers for clean cursor position display
+    switch (unit) {
+      case 'px':
+        return Math.round(value);
+      case 'cm':
+        return Math.round(value);
+      case 'mm':
+        return Math.round(value);
+      case 'in':
+        return Math.round(value);
+      case 'ft':
+        return Math.round(value);
+      default:
+        return Math.round(value);
+    }
+  };
+
+  // Check if click is on a transform handle
+  const getTransformHandleAt = (
+    x: number,
+    y: number,
+    objX: number,
+    objY: number,
+    objWidth: number,
+    objHeight: number,
+    zoom: number
+  ) => {
+    const handleSize = Math.max(8, 8 / zoom);
+    const handleHalf = handleSize / 2;
+    const tolerance = handleHalf + 1; // Reduced tolerance for easier body-drag
+
+    // Convert to object-relative coordinates
+    const relX = x - objX;
+    const relY = y - objY;
+
+    // Check rotation handle first (above top center) - highest priority
+    const rotationHandleY = -handleSize - 5;
+    const rotationHandleX = objWidth / 2;
+    if (
+      Math.abs(relX - rotationHandleX) <= tolerance &&
+      Math.abs(relY - rotationHandleY) <= tolerance
+    ) {
+      return 'rotate';
+    }
+
+    // Check corner handles (highest priority for corners)
+    if (Math.abs(relX) <= tolerance && Math.abs(relY) <= tolerance) return 'nw';
+    if (Math.abs(relX - objWidth) <= tolerance && Math.abs(relY) <= tolerance)
+      return 'ne';
+    if (Math.abs(relX) <= tolerance && Math.abs(relY - objHeight) <= tolerance)
+      return 'sw';
+    if (
+      Math.abs(relX - objWidth) <= tolerance &&
+      Math.abs(relY - objHeight) <= tolerance
+    )
+      return 'se';
+
+    // Check edge handles (lower priority for edges)
+    if (
+      Math.abs(relX - objWidth / 2) <= tolerance &&
+      Math.abs(relY) <= tolerance
+    )
+      return 'n';
+    if (
+      Math.abs(relX - objWidth / 2) <= tolerance &&
+      Math.abs(relY - objHeight) <= tolerance
+    )
+      return 's';
+    if (
+      Math.abs(relX) <= tolerance &&
+      Math.abs(relY - objHeight / 2) <= tolerance
+    )
+      return 'w';
+    if (
+      Math.abs(relX - objWidth) <= tolerance &&
+      Math.abs(relY - objHeight / 2) <= tolerance
+    )
+      return 'e';
+
+    return null;
+  };
+
+  // Mouse event handlers for panning and text creation
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      console.log('🔵 handleMouseDown called', {
+        button: e.button,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        target: e.target,
+      });
+
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        console.warn('❌ Canvas ref is null');
+        return;
+      }
+
+      // Set mouse down state - update both state and ref
+      setIsMouseDown(true);
+      isMouseDownRef.current = true; // Update ref for reliable state tracking
+      setHasMovedEnough(false); // Reset movement threshold
+      setInitialMousePos({ x: e.clientX, y: e.clientY }); // Store initial mouse position
+
+      // Left button only - enable canvas dragging by default
+
+      const rect = canvas.getBoundingClientRect();
+
+      // Calculate artboard position - MUST match renderCanvas transform exactly!
+      const ARTBOARD_WIDTH = 1800; // 6 * 300
+      const ARTBOARD_HEIGHT = 1200; // 4 * 300
+
+      const store = useEditorStore.getState();
+      const currentPanX = store.panX;
+      const currentPanY = store.panY;
+
+      // Calculate artboard position EXACTLY as renderCanvas does
+      const canvasCenterX = canvas.width / 2;
+      const canvasCenterY = canvas.height / 2;
+      const artboardOffsetX = canvasCenterX - ARTBOARD_WIDTH / 2;
+      const artboardOffsetY = canvasCenterY - ARTBOARD_HEIGHT / 2;
+      const artboardX = artboardOffsetX + currentPanX;
+      const artboardY = artboardOffsetY + currentPanY;
+
+      // Artboard center position (where zoom transform is centered)
+      const artboardCenterX = artboardX + ARTBOARD_WIDTH / 2;
+      const artboardCenterY = artboardY + ARTBOARD_HEIGHT / 2;
+
+      // Mouse position in canvas coordinates
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Reverse the renderCanvas center-based zoom transform:
+      // Render: translate(center) -> scale(zoom) -> translate(-center)
+      // Reverse: translate(center) -> scale(1/zoom) -> translate(-center)
+      const effectiveZoom = zoom * defaultViewScale;
+
+      // Convert mouse to artboard coordinates (in pixels)
+      // 1. Get position relative to artboard center
+      const relativeX = mouseX - artboardCenterX;
+      const relativeY = mouseY - artboardCenterY;
+
+      // 2. Reverse the scale (divide by zoom)
+      const scaledX = relativeX / effectiveZoom;
+      const scaledY = relativeY / effectiveZoom;
+
+      // 3. Add back the center offset to get position in artboard space (pixels)
+      const artboardMouseX = scaledX + ARTBOARD_WIDTH / 2;
+      const artboardMouseY = scaledY + ARTBOARD_HEIGHT / 2;
+
+      // Convert to document units (inches) - only convert ONCE
+      // Objects store position in inches, so we need inches here
+      const documentX = artboardMouseX / documentDpi;
+      const documentY = artboardMouseY / documentDpi;
+
+      console.log('📍 Mouse position calculated:', {
+        mouseX: e.clientX - rect.left,
+        mouseY: e.clientY - rect.top,
+        artboardMouseX,
+        artboardMouseY,
+        documentX,
+        documentY,
+        documentDpi,
+        effectiveZoom,
+        artboardX,
+        artboardY,
+      });
+
+      // Check for transform handle clicks first (regardless of active tool)
+      if (selectedObjects.length > 0) {
+        const selectedObj = useEditorStore
+          .getState()
+          .objects.find((obj) => obj.id === selectedObjects[0]);
+        if (selectedObj) {
+          // Calculate object position in artboard coordinates
+          const objX = selectedObj.x * documentDpi;
+          const objY = selectedObj.y * documentDpi;
+          const objWidth = selectedObj.width * documentDpi;
+          const objHeight = selectedObj.height * documentDpi;
+
+          const clickedHandle = getTransformHandleAt(
+            artboardMouseX,
+            artboardMouseY,
+            objX,
+            objY,
+            objWidth,
+            objHeight,
+            1 // use fixed zoom for consistent handle hitboxes
+          );
+
+          if (clickedHandle) {
+            // Start transform operation
+            setIsTransforming(true);
+            setTransformHandle(clickedHandle);
+            setTransformStart({ x: artboardMouseX, y: artboardMouseY });
+            setTransformOrigin({
+              x: selectedObj.x,
+              y: selectedObj.y,
+              width: selectedObj.width,
+              height: selectedObj.height,
+            });
+            return;
+          }
+        }
+      }
+
+      // Check if clicking on artboard area first (for artboard dragging)
+      // Note: effectiveZoom is already declared earlier in the function
+
+      // Convert mouse position to artboard space to check if within artboard bounds
+      // Check if click is within artboard bounds using the already calculated artboardMouseX/Y
+      // Note: artboardMouseX/Y are already calculated with proper zoom and pan offset
+      const isOverArtboard =
+        artboardMouseX >= 0 &&
+        artboardMouseX <= ARTBOARD_WIDTH &&
+        artboardMouseY >= 0 &&
+        artboardMouseY <= ARTBOARD_HEIGHT;
+
+      // Check for object clicks (regardless of active tool)
+      // Check objects in reverse order (top to bottom) to select the topmost object
+      const objects = useEditorStore.getState().objects;
+      console.log('🔍 Checking for object clicks:', {
+        totalObjects: objects.length,
+        objects: objects.map((obj) => ({
+          id: obj.id,
+          type: obj.type,
+          x: obj.x,
+          y: obj.y,
+          width: obj.width,
+          height: obj.height,
+          objX: obj.x * documentDpi,
+          objY: obj.y * documentDpi,
+        })),
+        clickPos: { artboardMouseX, artboardMouseY },
+      });
+
+      const reversedObjects = [...objects].reverse();
+      const clickedObject = reversedObjects.find((obj) => {
+        const objX = obj.x * documentDpi;
+        const objY = obj.y * documentDpi;
+        const objWidth = obj.width * documentDpi;
+        const objHeight = obj.height * documentDpi;
+
+        const isInside =
+          artboardMouseX >= objX &&
+          artboardMouseX <= objX + objWidth &&
+          artboardMouseY >= objY &&
+          artboardMouseY <= objY + objHeight;
+
+        if (isInside) {
+          console.log('✅ Found clicked object:', {
+            id: obj.id,
+            type: obj.type,
+            bounds: { objX, objY, objWidth, objHeight },
+            clickPos: { artboardMouseX, artboardMouseY },
+          });
+        }
+
+        return isInside;
+      });
+
+      if (!clickedObject) {
+        console.log('❌ No object clicked - clicking on empty space');
+      }
+
+      if (clickedObject) {
+        // Handle text editing (only for text objects)
+        if (activeTool === 'text' && clickedObject.type === 'text') {
+          // Double-click to edit existing text
+          if (e.detail === 2) {
+            setIsTextEditing(true);
+            setEditingTextId(clickedObject.id);
+            useEditorStore.getState().selectObject(clickedObject.id);
+            return;
+          }
+        }
+
+        // Single click to select any object
+        useEditorStore.getState().selectObject(clickedObject.id);
+
+        // Check if clicking on transform handles first
+        const objX = clickedObject.x * documentDpi;
+        const objY = clickedObject.y * documentDpi;
+        const objWidth = clickedObject.width * documentDpi;
+        const objHeight = clickedObject.height * documentDpi;
+
+        const clickedHandle = getTransformHandleAt(
+          artboardMouseX,
+          artboardMouseY,
+          objX,
+          objY,
+          objWidth,
+          objHeight,
+          1
+        );
+
+        // Only prepare for dragging if not clicking on transform handles
+        if (!clickedHandle) {
+          // Store drag start position and offset
+          setDragStart({ x: e.clientX, y: e.clientY });
+          const offset = {
+            x: documentX - clickedObject.x,
+            y: documentY - clickedObject.y,
+          };
+          setDragOffset(offset);
+          // CRITICAL: Set initial mouse position for drag threshold detection
+          setInitialMousePos({ x: e.clientX, y: e.clientY });
+          // Don't start dragging immediately - wait for movement threshold
+          // setIsDraggingObject will be set to true in handleMouseMove when threshold is met
+          setIsMouseDown(true); // ✅ FIX: Explicitly set mouse down state
+          setHasMovedEnough(false); // Reset movement threshold
+
+          // CRITICAL: Disable artboard dragging when clicking on an object
+          setIsDraggingArtboard(false);
+          setIsPanning(false);
+
+          console.log('Object clicked - drag initialized:', {
+            objectId: clickedObject.id,
+            objectPos: { x: clickedObject.x, y: clickedObject.y },
+            clickPos: { x: documentX, y: documentY },
+            dragOffset: offset,
+            initialMousePos: { x: e.clientX, y: e.clientY },
+          });
+        } else {
+          // transform branch (rotate/scale)
+          setIsTransforming(true);
+          setTransformHandle(clickedHandle);
+          setTransformStart({ x: artboardMouseX, y: artboardMouseY });
+          setTransformOrigin({
+            x: clickedObject.x,
+            y: clickedObject.y,
+            width: clickedObject.width,
+            height: clickedObject.height,
+          });
+        }
+
+        return;
+      }
+
+      // --- NEW: create a shape when a shape tool is active and click is on empty area ---
+      const shapeTools = [
+        'rectangle',
+        'circle',
+        'triangle',
+        'arrow',
+        'star',
+        'line',
+        'polygon',
+        'heart',
+        'gear',
+        'callout',
+      ];
+
+      if (!clickedObject && shapeTools.includes(activeTool)) {
+        // Default size in *document units* (inches), since you draw using documentDpi
+        const DEFAULT_W_IN = 1.5;
+        const DEFAULT_H_IN = 1.0;
+
+        const newShape = {
+          id: `shape-${Date.now()}`,
+          type: 'shape' as const,
+          shape: activeTool as any, // must match your drawShapeObject switch
+          x: Math.max(0, documentX - DEFAULT_W_IN / 2),
+          y: Math.max(0, documentY - DEFAULT_H_IN / 2),
+          width: DEFAULT_W_IN,
+          height: DEFAULT_H_IN,
+          rotation: 0,
+          opacity: 1,
+          locked: false,
+          visible: true,
+          name: 'Shape',
+          zIndex: Date.now(),
+          // simple styling; your renderer already supports these fields
+          fill: { type: 'solid' as const, color: '#FF5555' },
+          stroke: {
+            width: 1,
+            color: '#111111',
+            style: 'solid' as const,
+            cap: 'butt' as const,
+            join: 'miter' as const,
+          },
+          effects: {},
+        };
+
+        useEditorStore.getState().addObject(newShape);
+        useEditorStore.getState().selectObject(newShape.id);
+
+        // Set up drag state immediately so the newly created shape can be dragged
+        setDragStart({ x: e.clientX, y: e.clientY });
+        const offset = {
+          x: documentX - newShape.x,
+          y: documentY - newShape.y,
+        };
+        setDragOffset(offset);
+        setIsMouseDown(true);
+        setInitialMousePos({ x: e.clientX, y: e.clientY });
+
+        // Disable artboard dragging when creating a shape
+        setIsDraggingArtboard(false);
+        setIsPanning(false);
+
+        // Auto-switch to move tool after creating shape for better UX
+        useEditorStore.getState().setActiveTool('move');
+        // render is already triggered by your subscriptions to store.objects
+        return;
+      }
+
+      // If text tool is active and no object clicked, create text at click position
+      if (activeTool === 'text' && !clickedObject) {
+        // Create text object at click position
+        const newText = {
+          id: `text-${Date.now()}`,
+          type: 'text' as const,
+          text: 'Type here...',
+          x: documentX, // Use click position
+          y: documentY, // Use click position
+          width: 2, // 2 inches wide
+          height: 1, // 1 inch tall
+          rotation: 0,
+          opacity: 1,
+          locked: false,
+          visible: true,
+          name: 'Text',
+          zIndex: Date.now(),
+          fontFamily: 'Inter',
+          fontSize: 16,
+          fontWeight: 400,
+          fontStyle: 'normal' as const,
+          textAlign: 'left' as 'left' | 'center' | 'right' | 'justify',
+          verticalAlign: 'top' as 'top' | 'middle' | 'bottom',
+          lineHeight: 1.2,
+          letterSpacing: 0,
+          color: '#000000',
+          textFill: '#000000',
+          backgroundColor: 'transparent',
+          padding: { top: 0, right: 0, bottom: 0, left: 0 },
+          textShadow: 'none',
+          textStroke: 'none',
+          textStrokeWidth: 0,
+        };
+
+        useEditorStore.getState().addObject(newText);
+        useEditorStore.getState().selectObject(newText.id);
+        setIsTextEditing(true);
+        setEditingTextId(newText.id);
+        return;
+      }
+
+      // Enhanced artboard dragging logic - Allow dragging except when an object is clicked
+      // Allow artboard dragging when:
+      // 1. Middle mouse button is clicked (anywhere) OR
+      // 2. Alt key is held (force artboard drag mode) AND no object clicked
+      // 3. Left-click on empty artboard space (no object clicked) but NOT when text tool is active
+      // CRITICAL: Never start artboard drag if an object was clicked
+      const isMiddleMouse = e.button === 1; // Middle mouse button
+      const isAltMode = e.altKey && !clickedObject; // Alt mode only works if no object clicked
+      const isLeftClickOnEmptySpace =
+        e.button === 0 &&
+        !clickedObject &&
+        isOverArtboard &&
+        activeTool !== 'text';
+
+      // Trigger artboard panning on left-click in empty artboard space
+      // BUT only if NO object was clicked
+      const shouldStartArtboardDrag =
+        (isLeftClickOnEmptySpace || isMiddleMouse || isAltMode) &&
+        !clickedObject;
+
+      if (shouldStartArtboardDrag) {
+        setIsDraggingArtboard(true);
+        setArtboardDragStart({ x: e.clientX, y: e.clientY });
+        setIsMouseDown(true);
+
+        // Clear existing selection when starting artboard drag (unless Alt is held)
+        if (!e.altKey && !clickedObject) {
+          useEditorStore.getState().clearSelection();
+        }
+
+        return;
+      }
+
+      // Start marquee selection if clicking on empty space (unless text tool is active)
+      if (activeTool !== 'text' && !clickedObject && isOverArtboard) {
+        // Start marquee selection
+        setIsMarqueeSelecting(true);
+        setMarqueeStart({ x: documentX, y: documentY });
+        setMarqueeEnd({ x: documentX, y: documentY });
+
+        // Clear existing selection unless Ctrl/Cmd is held
+        if (!e.ctrlKey && !e.metaKey) {
+          useEditorStore.getState().clearSelection();
+        }
+
+        return;
+      }
+
+      // Only start panning if no object was clicked and no marquee selection started
+      if (!clickedObject && !isMarqueeSelecting) {
+        setIsPanning(true);
+        setLastPanPoint({ x: e.clientX, y: e.clientY });
+      }
+    },
+    [activeTool, zoom, documentDpi]
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // Throttle logging - only log occasionally during debugging
+      // Check if mouse button is actually pressed (more reliable than state)
+      const isMouseButtonPressed = (e.buttons & 1) === 1;
+
+      if (isMouseButtonPressed && Math.random() < 0.05) {
+        console.log('🟢 handleMouseMove - mouse button pressed', {
+          isMouseDown,
+          isMouseButtonPressed,
+          isDraggingObject,
+          selectedObjectsLength: selectedObjects.length,
+          buttons: e.buttons,
+        });
+      }
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+
+      // Calculate artboard position - MUST match renderCanvas transform exactly!
+      const ARTBOARD_WIDTH = 1800; // 6 * 300
+      const ARTBOARD_HEIGHT = 1200; // 4 * 300
+
+      const storeState = useEditorStore.getState();
+      const currentPanX = storeState.panX;
+      const currentPanY = storeState.panY;
+
+      // Calculate artboard position EXACTLY as renderCanvas does
+      const canvasCenterX = canvas.width / 2;
+      const canvasCenterY = canvas.height / 2;
+      const artboardOffsetX = canvasCenterX - ARTBOARD_WIDTH / 2;
+      const artboardOffsetY = canvasCenterY - ARTBOARD_HEIGHT / 2;
+      const artboardX = artboardOffsetX + currentPanX;
+      const artboardY = artboardOffsetY + currentPanY;
+
+      // Artboard center position (where zoom transform is centered)
+      const artboardCenterX = artboardX + ARTBOARD_WIDTH / 2;
+      const artboardCenterY = artboardY + ARTBOARD_HEIGHT / 2;
+
+      // Mouse position in canvas coordinates
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Reverse the renderCanvas center-based zoom transform:
+      // Render: translate(center) -> scale(zoom) -> translate(-center)
+      // Reverse: translate(center) -> scale(1/zoom) -> translate(-center)
+      const effectiveZoom = zoom * defaultViewScale;
+
+      // Convert mouse to artboard coordinates (in pixels)
+      // 1. Get position relative to artboard center
+      const relativeX = mouseX - artboardCenterX;
+      const relativeY = mouseY - artboardCenterY;
+
+      // 2. Reverse the scale (divide by zoom)
+      const scaledX = relativeX / effectiveZoom;
+      const scaledY = relativeY / effectiveZoom;
+
+      // 3. Add back the center offset to get position in artboard space (pixels)
+      const artboardMouseX = scaledX + ARTBOARD_WIDTH / 2;
+      const artboardMouseY = scaledY + ARTBOARD_HEIGHT / 2;
+
+      // Convert to document units (inches) - only convert ONCE
+      // Objects store position in inches, so we need inches here
+      const documentX = artboardMouseX / documentDpi;
+      const documentY = artboardMouseY / documentDpi;
+
+      // Update cursor position for ruler indicators (in canvas coordinates) - 100% accurate with zoom
+      const newCursorPosition = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+
+      setCursorPosition(newCursorPosition);
+
+      // Update mouse position for cursor detection
+      setMousePosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+
+      // ✅ Check movement threshold for object dragging FIRST
+      // Only start dragging if mouse has moved enough pixels
+      // IMPORTANT: This must run BEFORE artboard dragging check
+      // CRITICAL: Get fresh selection from store to avoid stale closures
+      const selectionStore = useEditorStore.getState();
+      const currentSelection = selectionStore.selection;
+
+      // CRITICAL: Check mouse state - use ref for reliable persistence across re-renders
+      // React state might be stale, so check ref, state, and actual mouse buttons
+      const mouseIsActuallyDown =
+        isMouseDownRef.current || isMouseDown || (e.buttons & 1) === 1;
+
+      // Keep ref in sync with actual button state
+      if ((e.buttons & 1) === 1) {
+        isMouseDownRef.current = true;
+      } else if (e.buttons === 0 && !isDraggingObjectRef.current) {
+        // Only reset if not dragging (dragging state handles its own reset)
+        isMouseDownRef.current = false;
+      }
+
+      console.log('🔍 Drag threshold check:', {
+        isMouseDown,
+        isMouseDownRef: isMouseDownRef.current,
+        mouseIsActuallyDown,
+        mouseButtons: e.buttons,
+        isDraggingObject,
+        currentSelectionLength: currentSelection.length,
+        hasInitialMousePos: !!initialMousePos,
+      });
+
+      let shouldStartDragging = false;
+      if (
+        mouseIsActuallyDown &&
+        !isDraggingObject &&
+        !isDraggingArtboard &&
+        !isTransforming &&
+        !isPanning &&
+        currentSelection.length > 0
+      ) {
+        // CRITICAL: initialMousePos might be stale, use the actual initial position
+        if (
+          !initialMousePos ||
+          (initialMousePos.x === 0 && initialMousePos.y === 0)
+        ) {
+          console.warn(
+            '⚠️ initialMousePos not set, cannot check drag threshold'
+          );
+          // Try to recover - set initial position to current
+          setInitialMousePos({ x: e.clientX, y: e.clientY });
+          return;
+        }
+
+        const deltaX = e.clientX - initialMousePos.x;
+        const deltaY = e.clientY - initialMousePos.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        // If mouse moved beyond threshold, start dragging
+        if (distance > DRAG_THRESHOLD) {
+          console.log('Drag threshold exceeded - starting drag:', {
+            distance,
+            threshold: DRAG_THRESHOLD,
+            selectedObjects: currentSelection.length,
+            selection: currentSelection,
+            dragOffset,
+          });
+          setIsDraggingObject(true);
+          isDraggingObjectRef.current = true; // Update ref for reliable state
+          setHasMovedEnough(true);
+          // Explicitly disable artboard dragging when object drag starts
+          setIsDraggingArtboard(false);
+          setIsPanning(false);
+          // Mark that we should drag immediately in this frame
+          shouldStartDragging = true;
+        } else {
+          // Threshold not met yet, but we have a selected object and mouse is down
+          // Don't allow artboard dragging - wait for threshold
+          if (currentSelection.length > 0) {
+            return;
+          }
+        }
+      }
+
+      // Handle artboard dragging - with safe constraints to prevent disappearing
+      // CRITICAL: Only allow if no object is selected or being dragged
+      if (isDraggingArtboard && selectedObjects.length === 0) {
+        const deltaX = e.clientX - artboardDragStart.x;
+        const deltaY = e.clientY - artboardDragStart.y;
+
+        // Get current store pan values
+        const currentStore = useEditorStore.getState();
+
+        // Calculate correct boundaries for edge alignment
+        const ARTBOARD_WIDTH = 1800;
+        const ARTBOARD_HEIGHT = 1200;
+        const LEFT_PANEL_WIDTH = 80; // Icons bar width - left inner boundary
+        const RULER_SIZE = 40; // Ruler width
+        const RIGHT_RULER_BOUNDARY = canvas.width - RULER_SIZE; // Right inner boundary (left side of ruler)
+
+        // Correct boundary math: artboard center positions for edge alignment
+        // Left edge = LEFT_PANEL_WIDTH: center = LEFT_PANEL_WIDTH + ARTBOARD_WIDTH/2
+        const minPanX = LEFT_PANEL_WIDTH + ARTBOARD_WIDTH / 2;
+        // Right edge = RIGHT_RULER_BOUNDARY: center = RIGHT_RULER_BOUNDARY - ARTBOARD_WIDTH/2
+        const maxPanX = RIGHT_RULER_BOUNDARY - ARTBOARD_WIDTH / 2;
+
+        // Vertical constraints (allow partial off-screen)
+        const minPanY = -canvas.height + ARTBOARD_HEIGHT / 2;
+        const maxPanY = canvas.height - RULER_SIZE - ARTBOARD_HEIGHT / 2;
+
+        // Apply simple, safe boundary constraints to prevent disappearing
+        let newPanX, newPanY;
+
+        // Basic constraints: ensure artboard stays at least partially visible
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+
+        // Safe bounds: allow artboard to be dragged but keep it visible
+        const safeMinX = LEFT_PANEL_WIDTH; // Left edge can't go past icons bar
+        const safeMaxX = canvasWidth - RULER_SIZE; // Right edge can't go past ruler
+
+        // Apply delta with simple constraints
+        newPanX = currentStore.panX + deltaX;
+        newPanY = currentStore.panY + deltaY;
+
+        // Keep artboard within safe bounds (prevent disappearing)
+        if (newPanX - ARTBOARD_WIDTH / 2 < safeMinX) {
+          newPanX = safeMinX + ARTBOARD_WIDTH / 2;
+        }
+        if (newPanX + ARTBOARD_WIDTH / 2 > safeMaxX) {
+          newPanX = safeMaxX - ARTBOARD_WIDTH / 2;
+        }
+
+        // Update store pan
+        useEditorStore.getState().setPan(newPanX, newPanY);
+
+        // Update drag start position for smooth dragging
+        setArtboardDragStart({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      // Handle transform operations
+      if (isTransforming && transformHandle && selectedObjects.length > 0) {
+        const selectedObj = useEditorStore
+          .getState()
+          .objects.find((obj) => obj.id === selectedObjects[0]);
+        if (selectedObj) {
+          // Calculate delta in artboard coordinates
+          const deltaX = artboardMouseX - transformStart.x;
+          const deltaY = artboardMouseY - transformStart.y;
+
+          // Convert delta to document units
+          const deltaDocX = deltaX / documentDpi;
+          const deltaDocY = deltaY / documentDpi;
+
+          // Calculate new dimensions based on handle type
+          let newX = transformOrigin.x;
+          let newY = transformOrigin.y;
+          let newWidth = transformOrigin.width;
+          let newHeight = transformOrigin.height;
+
+          // Apply proportional scaling if Shift is held
+          const isProportional = e.shiftKey;
+          // Apply center scaling if Alt is held
+          const isCenterScaling = e.altKey;
+
+          switch (transformHandle) {
+            case 'nw': // Top-left
+              if (isCenterScaling) {
+                // Scale from center - both dimensions change equally
+                const avgDelta = (deltaDocX + deltaDocY) / 2;
+                const scale = 1 + avgDelta / transformOrigin.width;
+                newWidth = transformOrigin.width * scale;
+                newHeight = transformOrigin.height * scale;
+                newX =
+                  transformOrigin.x + (transformOrigin.width - newWidth) / 2;
+                newY =
+                  transformOrigin.y + (transformOrigin.height - newHeight) / 2;
+              } else {
+                newX = transformOrigin.x + deltaDocX;
+                newY = transformOrigin.y + deltaDocY;
+                newWidth = transformOrigin.width - deltaDocX;
+                newHeight = transformOrigin.height - deltaDocY;
+                if (isProportional) {
+                  const scale = Math.min(
+                    newWidth / transformOrigin.width,
+                    newHeight / transformOrigin.height
+                  );
+                  newWidth = transformOrigin.width * scale;
+                  newHeight = transformOrigin.height * scale;
+                  newX = transformOrigin.x + transformOrigin.width - newWidth;
+                  newY = transformOrigin.y + transformOrigin.height - newHeight;
+                }
+              }
+              break;
+            case 'ne': // Top-right
+              if (isCenterScaling) {
+                // Scale from center - both dimensions change equally
+                const avgDelta = (-deltaDocX + deltaDocY) / 2;
+                const scale = 1 + avgDelta / transformOrigin.width;
+                newWidth = transformOrigin.width * scale;
+                newHeight = transformOrigin.height * scale;
+                newX =
+                  transformOrigin.x + (transformOrigin.width - newWidth) / 2;
+                newY =
+                  transformOrigin.y + (transformOrigin.height - newHeight) / 2;
+              } else {
+                newY = transformOrigin.y + deltaDocY;
+                newWidth = transformOrigin.width + deltaDocX;
+                newHeight = transformOrigin.height - deltaDocY;
+                if (isProportional) {
+                  const scale = Math.min(
+                    newWidth / transformOrigin.width,
+                    newHeight / transformOrigin.height
+                  );
+                  newWidth = transformOrigin.width * scale;
+                  newHeight = transformOrigin.height * scale;
+                  newY = transformOrigin.y + transformOrigin.height - newHeight;
+                }
+              }
+              break;
+            case 'sw': // Bottom-left
+              if (isCenterScaling) {
+                // Scale from center - both dimensions change equally
+                const avgDelta = (deltaDocX - deltaDocY) / 2;
+                const scale = 1 + avgDelta / transformOrigin.width;
+                newWidth = transformOrigin.width * scale;
+                newHeight = transformOrigin.height * scale;
+                newX =
+                  transformOrigin.x + (transformOrigin.width - newWidth) / 2;
+                newY =
+                  transformOrigin.y + (transformOrigin.height - newHeight) / 2;
+              } else {
+                newX = transformOrigin.x + deltaDocX;
+                newWidth = transformOrigin.width - deltaDocX;
+                newHeight = transformOrigin.height + deltaDocY;
+                if (isProportional) {
+                  const scale = Math.min(
+                    newWidth / transformOrigin.width,
+                    newHeight / transformOrigin.height
+                  );
+                  newWidth = transformOrigin.width * scale;
+                  newHeight = transformOrigin.height * scale;
+                  newX = transformOrigin.x + transformOrigin.width - newWidth;
+                }
+              }
+              break;
+            case 'se': // Bottom-right
+              if (isCenterScaling) {
+                // Scale from center - both dimensions change equally
+                const avgDelta = (-deltaDocX - deltaDocY) / 2;
+                const scale = 1 + avgDelta / transformOrigin.width;
+                newWidth = transformOrigin.width * scale;
+                newHeight = transformOrigin.height * scale;
+                newX =
+                  transformOrigin.x + (transformOrigin.width - newWidth) / 2;
+                newY =
+                  transformOrigin.y + (transformOrigin.height - newHeight) / 2;
+              } else {
+                newWidth = transformOrigin.width + deltaDocX;
+                newHeight = transformOrigin.height + deltaDocY;
+                if (isProportional) {
+                  const scale = Math.min(
+                    newWidth / transformOrigin.width,
+                    newHeight / transformOrigin.height
+                  );
+                  newWidth = transformOrigin.width * scale;
+                  newHeight = transformOrigin.height * scale;
+                }
+              }
+              break;
+            case 'n': // Top
+              newY = transformOrigin.y + deltaDocY;
+              newHeight = transformOrigin.height - deltaDocY;
+              break;
+            case 's': // Bottom
+              newHeight = transformOrigin.height + deltaDocY;
+              break;
+            case 'w': // Left
+              newX = transformOrigin.x + deltaDocX;
+              newWidth = transformOrigin.width - deltaDocX;
+              break;
+            case 'e': // Right
+              newWidth = transformOrigin.width + deltaDocX;
+              break;
+            case 'rotate':
+              // Enhanced rotation calculation with angle display
+              const centerX = transformOrigin.x + transformOrigin.width / 2;
+              const centerY = transformOrigin.y + transformOrigin.height / 2;
+
+              // Convert to document coordinates
+              const centerDocX = centerX * documentDpi;
+              const centerDocY = centerY * documentDpi;
+
+              const startAngle = Math.atan2(
+                transformStart.y - centerDocY,
+                transformStart.x - centerDocX
+              );
+              const currentAngle = Math.atan2(
+                artboardMouseY - centerDocY,
+                artboardMouseX - centerDocX
+              );
+              const rotationDelta =
+                ((currentAngle - startAngle) * 180) / Math.PI;
+
+              // Apply rotation with snapping to 15-degree increments if Shift is held
+              const snapIncrement = e.shiftKey ? 15 : 1;
+              const newRotation = selectedObj.rotation + rotationDelta;
+              const snappedRotation =
+                Math.round(newRotation / snapIncrement) * snapIncrement;
+
+              // Update rotation and display current angle
+              setCurrentRotation(snappedRotation);
+              useEditorStore
+                .getState()
+                .updateObject(selectedObj.id, { rotation: snappedRotation });
+              setTransformStart({ x: e.clientX, y: e.clientY });
+              return;
+          }
+
+          // Ensure minimum size
+          newWidth = Math.max(0.1, newWidth);
+          newHeight = Math.max(0.1, newHeight);
+
+          // Constrain to artboard bounds (convert to document units for bounds checking)
+          const artboardWidth = 6; // 6 inches
+          const artboardHeight = 4; // 4 inches
+
+          // Ensure object stays within artboard bounds
+          newX = Math.max(0, Math.min(newX, artboardWidth - newWidth));
+          newY = Math.max(0, Math.min(newY, artboardHeight - newHeight));
+
+          // Batch update all selected objects for transform operations
+          const store = useEditorStore.getState();
+          const transformUpdates = selectedObjects
+            .map((objId) => {
+              const obj = store.objects.find((o) => o.id === objId);
+              if (!obj) return null;
+
+              // Calculate relative transform for each object
+              const relativeX = obj.x - selectedObj.x;
+              const relativeY = obj.y - selectedObj.y;
+              const relativeWidth = obj.width / selectedObj.width;
+              const relativeHeight = obj.height / selectedObj.height;
+
+              // Apply relative transform
+              const objNewX = newX + relativeX;
+              const objNewY = newY + relativeY;
+              const objNewWidth = newWidth * relativeWidth;
+              const objNewHeight = newHeight * relativeHeight;
+
+              return {
+                id: objId,
+                updates: {
+                  x: objNewX,
+                  y: objNewY,
+                  width: objNewWidth,
+                  height: objNewHeight,
+                },
+              };
+            })
+            .filter(
+              (update): update is { id: string; updates: any } =>
+                update !== null
+            );
+
+          // Apply all transform updates in a single batch
+          if (transformUpdates.length > 0) {
+            store.updateObjects(transformUpdates);
+          }
+        }
+        return;
+      }
+
+      // Continue dragging if already dragging OR if we just started dragging in this frame
+      // CRITICAL: Use fresh selection from store to avoid stale closures
+      // ALSO: Check if mouse button is actually pressed (more reliable than state)
+      const freshStore = useEditorStore.getState();
+      const freshSelection = freshStore.selection;
+      const mouseButtonPressed = (e.buttons & 1) === 1;
+
+      // Allow dragging if:
+      // 1. We're already dragging (check ref first for reliability)
+      // 2. We just started dragging this frame (shouldStartDragging)
+      // 3. OR mouse button is pressed and we have a selection (fallback for stale state)
+      const shouldDrag =
+        isDraggingObjectRef.current || // Check ref first - most reliable
+        isDraggingObject ||
+        shouldStartDragging ||
+        (mouseButtonPressed &&
+          freshSelection.length > 0 &&
+          (isMouseDownRef.current || isMouseDown));
+
+      if (shouldDrag && freshSelection.length > 0) {
+        const selectedObj = freshStore.objects.find(
+          (obj) => obj.id === freshSelection[0]
+        );
+
+        // CRITICAL: Ensure we have a valid object
+        if (!selectedObj) {
+          console.warn(
+            'Selected object not found during drag:',
+            freshSelection[0]
+          );
+          return;
+        }
+
+        console.log('Updating object position during drag:', {
+          objectId: selectedObj.id,
+          currentPos: { x: selectedObj.x, y: selectedObj.y },
+          documentPos: { x: documentX, y: documentY },
+          dragOffset,
+          isDraggingObject,
+          shouldStartDragging,
+          freshSelection,
+        });
+
+        // CRITICAL: Validate and fix dragOffset - ensure it's in document units (inches)
+        // dragOffset should be the offset between click position and object position (both in inches)
+        let validDragOffset = dragOffset;
+
+        // If dragOffset is invalid or seems wrong, recalculate it
+        // This handles cases where object wasn't clicked initially or state was stale
+        if (
+          !dragOffset ||
+          typeof dragOffset.x !== 'number' ||
+          typeof dragOffset.y !== 'number' ||
+          isNaN(dragOffset.x) ||
+          isNaN(dragOffset.y)
+        ) {
+          // Calculate offset from current relative position (both in document units/inches)
+          validDragOffset = {
+            x: documentX - selectedObj.x,
+            y: documentY - selectedObj.y,
+          };
+          setDragOffset(validDragOffset);
+          console.log('⚠️ Recalculated dragOffset:', validDragOffset, {
+            documentX,
+            documentY,
+            objX: selectedObj.x,
+            objY: selectedObj.y,
+          });
+        }
+
+        // ✅ Calculate new position: cursor position minus offset (both in inches)
+        // This ensures the object follows the cursor at the correct offset
+        const newX = documentX - validDragOffset.x;
+        const newY = documentY - validDragOffset.y;
+
+        // Debug log to verify calculations
+        console.log('📍 Position calculation:', {
+          documentX,
+          documentY,
+          dragOffset: validDragOffset,
+          newX,
+          newY,
+          currentObjX: selectedObj.x,
+          currentObjY: selectedObj.y,
+          deltaX: newX - selectedObj.x,
+          deltaY: newY - selectedObj.y,
+        });
+
+        // Constrain inside artboard
+        const artboardWidth = 6;
+        const artboardHeight = 4;
+        const constrainedX = Math.max(
+          0,
+          Math.min(newX, artboardWidth - selectedObj.width)
+        );
+        const constrainedY = Math.max(
+          0,
+          Math.min(newY, artboardHeight - selectedObj.height)
+        );
+
+        // Batch update all selected objects in a single state update for better performance
+        // This ensures all position updates happen atomically and trigger a single re-render
+        const batchUpdates = freshSelection
+          .map((objId) => {
+            const obj = freshStore.objects.find((o) => o.id === objId);
+            if (!obj) return null;
+
+            const relX = obj.x - selectedObj.x;
+            const relY = obj.y - selectedObj.y;
+
+            // Calculate new position with constraints
+            const newObjX = Math.max(
+              0,
+              Math.min(constrainedX + relX, artboardWidth - obj.width)
+            );
+            const newObjY = Math.max(
+              0,
+              Math.min(constrainedY + relY, artboardHeight - obj.height)
+            );
+
+            // Only include update if position actually changed (prevents unnecessary state updates)
+            // Use a small epsilon for floating point comparison
+            const epsilon = 0.0001;
+            if (
+              Math.abs(obj.x - newObjX) < epsilon &&
+              Math.abs(obj.y - newObjY) < epsilon
+            ) {
+              return null; // No change needed
+            }
+
+            return {
+              id: objId,
+              updates: {
+                x: newObjX,
+                y: newObjY,
+              },
+            };
+          })
+          .filter(
+            (update): update is { id: string; updates: any } => update !== null
+          );
+
+        // Apply all updates in a single batch if there are any
+        // This MUST be called to update state - no conditional needed as batchUpdates is filtered
+        if (batchUpdates.length > 0) {
+          console.log('Applying batch updates:', batchUpdates);
+          freshStore.updateObjects(batchUpdates);
+
+          // CRITICAL: Force immediate render during drag for smooth visual feedback
+          // Set needsRender flag which will trigger the useEffect to call renderCanvas
+          setNeedsRender(true);
+        } else {
+          console.warn('No batch updates to apply - position unchanged?');
+        }
+
+        // you no longer need to update dragStart each frame
+        return;
+      }
+
+      // Handle marquee selection
+      if (isMarqueeSelecting) {
+        setMarqueeEnd({ x: documentX, y: documentY });
+
+        // Select objects within marquee bounds
+        const objects = useEditorStore.getState().objects;
+        const marqueeLeft = Math.min(marqueeStart.x, documentX);
+        const marqueeRight = Math.max(marqueeStart.x, documentX);
+        const marqueeTop = Math.min(marqueeStart.y, documentY);
+        const marqueeBottom = Math.max(marqueeStart.y, documentY);
+
+        const objectsInMarquee = objects.filter((obj) => {
+          const objLeft = obj.x;
+          const objRight = obj.x + obj.width;
+          const objTop = obj.y;
+          const objBottom = obj.y + obj.height;
+
+          return (
+            objLeft < marqueeRight &&
+            objRight > marqueeLeft &&
+            objTop < marqueeBottom &&
+            objBottom > marqueeTop
+          );
+        });
+
+        // Update selection
+        if (objectsInMarquee.length > 0) {
+          const objectIds = objectsInMarquee.map((obj) => obj.id);
+          useEditorStore.getState().selectObjects(objectIds);
+        }
+
+        return;
+      }
+
+      // CRITICAL: Only allow panning if no object is selected or being dragged
+      if (isPanning && selectedObjects.length === 0 && !isDraggingObject) {
+        const deltaX = e.clientX - lastPanPoint.x;
+        const deltaY = e.clientY - lastPanPoint.y;
+
+        // Accumulate delta for smoother movement
+        pendingPanRef.current = {
+          x: pendingPanRef.current.x + deltaX,
+          y: pendingPanRef.current.y + deltaY,
+        };
+
+        setLastPanPoint({ x: e.clientX, y: e.clientY });
+
+        // Throttled pan update using requestAnimationFrame for smooth performance
+        if (panFrameRef.current === null) {
+          panFrameRef.current = requestAnimationFrame(() => {
+            const currentStore = useEditorStore.getState();
+            const { x: pdX, y: pdY } = pendingPanRef.current;
+
+            // Calculate boundaries (cached constants for performance)
+            const ARTBOARD_WIDTH = 1800;
+            const ARTBOARD_HEIGHT = 1200;
+            const canvasCenterOffsetX = canvas.width / 2 - ARTBOARD_WIDTH / 2;
+            const canvasCenterOffsetY = canvas.height / 2 - ARTBOARD_HEIGHT / 2;
+
+            // Account for ruler margins - ruler takes space at top and right
+            const RULER_SIZE = 40; // Match the ruler size used in drawRulers
+            const usableCanvasWidth = canvas.width - RULER_SIZE; // Width minus right ruler
+            const usableCanvasHeight = canvas.height - RULER_SIZE; // Height minus top ruler
+
+            // Apply simple, safe boundary constraints to prevent disappearing
+            const LEFT_PANEL_WIDTH = 80; // Icons bar width
+            const RIGHT_RULER_BOUNDARY = canvas.width - RULER_SIZE; // Right inner boundary
+
+            // Safe bounds: keep artboard visible and within panel boundaries
+            const safeMinX = LEFT_PANEL_WIDTH + ARTBOARD_WIDTH / 2; // Left edge at icons bar
+            const safeMaxX = RIGHT_RULER_BOUNDARY - ARTBOARD_WIDTH / 2; // Right edge at ruler
+
+            // Check if bounds are valid, otherwise use relaxed approach
+            const minPanX =
+              safeMaxX >= safeMinX ? safeMinX : -ARTBOARD_WIDTH / 2;
+            const maxPanX =
+              safeMaxX >= safeMinX
+                ? safeMaxX
+                : canvas.width - ARTBOARD_WIDTH / 2;
+            const minPanY = -canvas.height + ARTBOARD_HEIGHT / 2; // Top edge
+            const maxPanY = usableCanvasHeight - ARTBOARD_HEIGHT / 2; // Bottom of top ruler (first boundary)
+
+            // Apply delta with constraints
+            const newPanX = Math.max(
+              minPanX,
+              Math.min(maxPanX, currentStore.panX + pdX)
+            );
+            const newPanY = Math.max(
+              minPanY,
+              Math.min(maxPanY, currentStore.panY + pdY)
+            );
+
+            // Only update if position actually changed
+            if (
+              newPanX !== currentStore.panX ||
+              newPanY !== currentStore.panY
+            ) {
+              useEditorStore.getState().setPan(newPanX, newPanY);
+            }
+
+            // Reset pending pan and frame reference
+            pendingPanRef.current = { x: 0, y: 0 };
+            panFrameRef.current = null;
+          });
+        }
+      }
+    },
+    [
+      isPanning,
+      lastPanPoint,
+      isDraggingText,
+      isTextDragMode,
+      isTransforming,
+      transformHandle,
+      transformStart,
+      transformOrigin,
+      zoom,
+      documentDpi,
+      selectedObjects,
+      isDraggingObject,
+      isMouseDown,
+      dragStart,
+      dragOffset,
+      isMarqueeSelecting,
+      marqueeStart,
+      isDraggingArtboard,
+      artboardDragStart,
+      initialMousePos,
+      hasMovedEnough,
+      DRAG_THRESHOLD,
+    ]
+  );
+
+  // Handle mouse hover for live cursor tracking
+  const handleMouseEnter = useCallback(() => {
+    // Ensure cursor position is initialized when mouse enters canvas
+  }, []);
+
+  // Global mouse move handler for live cursor tracking (without holding mouse button)
+  const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+
+    // Check if mouse is over canvas
+    const isOverCanvas =
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top &&
+      e.clientY <= rect.bottom;
+
+    if (isOverCanvas) {
+      const newCursorPosition = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+
+      setCursorPosition(newCursorPosition);
+      setMousePosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }
+  }, []);
+
+  // Add global mouse move listener for live cursor tracking
+  useEffect(() => {
+    const throttledMouseMove = (e: MouseEvent) => {
+      requestAnimationFrame(() => {
+        handleGlobalMouseMove(e);
+      });
+    };
+
+    document.addEventListener('mousemove', throttledMouseMove, {
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener('mousemove', throttledMouseMove);
+    };
+  }, [handleGlobalMouseMove]);
+
+  // Handle mouse leave to stop all interactions
+  const handleMouseLeave = useCallback(() => {
+    // Stop all interactions when mouse leaves canvas
+    setIsMouseDown(false);
+    setIsDraggingObject(false);
+    setIsTransforming(false);
+    setTransformHandle(null);
+    setIsPanning(false);
+    setIsMarqueeSelecting(false);
+    setIsDraggingArtboard(false);
+    setHasMovedEnough(false); // ✅ Reset movement threshold state
+  }, []);
+
+  // Global mouse up handler to stop dragging if mouse is released outside canvas
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsMouseDown(false);
+      setIsDraggingObject(false);
+      setIsTransforming(false);
+      setTransformHandle(null);
+      setIsPanning(false);
+      setIsMarqueeSelecting(false);
+      setIsDraggingArtboard(false);
+      setHasMovedEnough(false); // ✅ Reset movement threshold state
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, []);
+
+  const handleMouseUp = useCallback(
+    (e?: React.MouseEvent<HTMLCanvasElement>) => {
+      console.log('🟣 handleMouseUp called', {
+        isDraggingObject,
+        isTransforming,
+        isMouseDown,
+      });
+
+      // Handle end of transform operation
+      if (isTransforming) {
+        setIsTransforming(false);
+        setTransformHandle(null);
+        setIsMouseDown(false);
+        setHasMovedEnough(false); // ✅ Reset movement threshold state
+        return;
+      }
+
+      // Handle end of object dragging
+      if (isDraggingObject || isDraggingObjectRef.current) {
+        console.log('✅ Ending object drag');
+        setIsDraggingObject(false);
+        isDraggingObjectRef.current = false; // Reset ref
+        setIsMouseDown(false);
+        isMouseDownRef.current = false; // Reset ref
+        setHasMovedEnough(false); // ✅ Reset movement threshold state
+        return;
+      }
+
+      // Handle end of marquee selection
+      if (isMarqueeSelecting) {
+        setIsMarqueeSelecting(false);
+        setIsMouseDown(false);
+        setHasMovedEnough(false); // ✅ Reset movement threshold state
+        return;
+      }
+
+      // Handle end of artboard dragging
+      if (isDraggingArtboard) {
+        setIsDraggingArtboard(false);
+        setIsMouseDown(false);
+        setHasMovedEnough(false); // ✅ Reset movement threshold state
+        return;
+      }
+
+      // Handle end of panning
+      if (isPanning) {
+        setIsPanning(false);
+        setIsMouseDown(false);
+        setHasMovedEnough(false); // ✅ Reset movement threshold state
+
+        // Clean up animation frame and pending state
+        if (panFrameRef.current) {
+          cancelAnimationFrame(panFrameRef.current);
+          panFrameRef.current = null;
+        }
+        pendingPanRef.current = { x: 0, y: 0 };
+
+        return;
+      }
+
+      // Reset all mouse states (both state and refs)
+      setIsMouseDown(false);
+      isMouseDownRef.current = false; // Reset ref
+      setIsDraggingObject(false);
+      isDraggingObjectRef.current = false; // Reset ref
+      setIsTransforming(false);
+      setTransformHandle(null);
+      setIsMarqueeSelecting(false);
+      setIsDraggingArtboard(false);
+      setHasMovedEnough(false); // ✅ Reset movement threshold state
+
+      // Text creation is now handled in mouse down (single-click creation)
+
+      // Reset states
+      setIsPanning(false);
+      setIsDraggingText(false);
+      setIsTextDragMode(false);
+    },
+    [isDraggingText, isTextDragMode, activeTool, textDragStart, textDragEnd]
+  );
+
+  // Keyboard event handler for text editing
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isTextEditing || !editingTextId) return;
+
+      const objects = useEditorStore.getState().objects;
+      const editingText = objects.find((obj) => obj.id === editingTextId);
+      if (!editingText || editingText.type !== 'text') return;
+
+      // Check if this is placeholder text
+      const isPlaceholder = editingText.text === 'Type here...';
+
+      switch (e.key) {
+        case 'Escape':
+          // Finish editing
+          setIsTextEditing(false);
+          setEditingTextId(null);
+          break;
+        case 'Enter':
+          // Add new line
+          e.preventDefault();
+          const enterText = isPlaceholder ? '\n' : editingText.text + '\n';
+          useEditorStore.getState().updateObject(editingTextId, {
+            text: enterText,
+          });
+          break;
+        case 'Backspace':
+          // Handle backspace
+          e.preventDefault();
+          if (isPlaceholder) {
+            // If placeholder, clear it completely
+            useEditorStore.getState().updateObject(editingTextId, {
+              text: '',
+            });
+          } else if (editingText.text.length > 0) {
+            useEditorStore.getState().updateObject(editingTextId, {
+              text: editingText.text.slice(0, -1),
+            });
+          }
+          break;
+        case 'Delete':
+          // Handle delete
+          e.preventDefault();
+          if (isPlaceholder) {
+            // If placeholder, clear it completely
+            useEditorStore.getState().updateObject(editingTextId, {
+              text: '',
+            });
+          } else if (editingText.text.length > 0) {
+            useEditorStore.getState().updateObject(editingTextId, {
+              text: editingText.text.slice(0, -1),
+            });
+          }
+          break;
+        default:
+          // Handle regular character input
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            const newText = isPlaceholder ? e.key : editingText.text + e.key;
+            useEditorStore.getState().updateObject(editingTextId, {
+              text: newText,
+            });
+          }
+          break;
+      }
+    },
+    [isTextEditing, editingTextId]
+  );
+
+  // Add keyboard event listener for text editing
+  useEffect(() => {
+    if (isTextEditing) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [isTextEditing, handleKeyDown]);
+
+  // Touch event handlers for trackpad gesture prevention
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (e.touches.length > 1) {
+        // Multi-touch gesture (pinch zoom) - prevent browser zoom
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    []
+  );
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (e.touches.length > 1) {
+        // Multi-touch gesture (pinch zoom) - prevent browser zoom
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    []
+  );
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (e.touches.length > 1) {
+        // Multi-touch gesture (pinch zoom) - prevent browser zoom
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    []
+  );
+
+  // Smooth balanced canvas zoom - not too fast, not laggy
+  const handleWheelCapture = useCallback(
+    (e: React.WheelEvent<HTMLCanvasElement>) => {
+      // Always prevent default to stop browser zoom
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Allow zoom when Alt key is pressed OR trackpad gesture detected
+      if (e.altKey || Math.abs(e.deltaY) < 1) {
+        const delta = e.deltaY > 0 ? -0.08 : 0.08; // Balanced delta for smooth zoom
+        const newZoom = Math.max(0.25, Math.min(4, zoom + delta));
+
+        if (Math.abs(newZoom - zoom) > 0.01) {
+          // Direct update for smooth response without lag
+          useEditorStore.getState().setZoom(newZoom);
+        }
+      }
+    },
+    [zoom]
+  );
+
+  // Draw clean canvas with fixed business card artboard - optimized for smoothness
+  const renderCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Check if we can use cached viewport
+    const cacheKey = {
+      zoom,
+      panX: useEditorStore.getState().panX,
+      panY: useEditorStore.getState().panY,
+      backgroundType: canvasBackground.type,
+      backgroundColor: canvasBackground.color,
+      backgroundOpacity: canvasBackground.opacity,
+      backgroundGridSize: canvasBackground.gridSize,
+    };
+
+    const isCacheValid =
+      viewportCache.zoom === cacheKey.zoom &&
+      viewportCache.panX === cacheKey.panX &&
+      viewportCache.panY === cacheKey.panY &&
+      viewportCache.backgroundType === cacheKey.backgroundType &&
+      viewportCache.backgroundColor === cacheKey.backgroundColor &&
+      viewportCache.backgroundOpacity === cacheKey.backgroundOpacity &&
+      viewportCache.backgroundGridSize === cacheKey.backgroundGridSize;
+
+    // Calculate fixed artboard dimensions (needed by both base layer and overlays)
+    const ARTBOARD_WIDTH = 1800; // 6 * 300 (cache for performance)
+    const ARTBOARD_HEIGHT = 1200; // 4 * 300 (cache for performance)
+    const BLEED_SIZE = 37.5; // 0.125 * 300 (cache for performance)
+    const RULER_SIZE = 40; // Keep original size for top ruler
+
+    // Calculate artboard position (needed by both base layer and overlays)
+    const store = useEditorStore.getState(); // Single store access
+    const canvasCenterX = canvas.width / 2;
+    const canvasCenterY = canvas.height / 2;
+    const artboardOffsetX = canvasCenterX - ARTBOARD_WIDTH / 2; // Cache center calculation
+    const artboardOffsetY = canvasCenterY - ARTBOARD_HEIGHT / 2; // Cache center calculation
+
+    // Artboard position: optimized with cached calculations
+    const artboardX = artboardOffsetX + store.panX;
+    const artboardY = artboardOffsetY + store.panY;
+
+    // Use artboard position directly (pan offset already included) - use Math.round for pixel-perfect positioning
+    const offsetX = Math.round(artboardX);
+    const offsetY = Math.round(artboardY);
+
+    // Store base canvas if cache is valid, then continue to draw overlays
+    // CRITICAL: Never use cache during drag - objects must update visually in real-time
+    const hasCachedBase =
+      isCacheValid &&
+      viewportCache.imageData &&
+      !isTransforming &&
+      !isDraggingObject && // Force redraw during object drag
+      !isPanning;
+
+    if (hasCachedBase) {
+      // Use cached base layer
+      ctx.putImageData(viewportCache.imageData, 0, 0);
+    } else {
+      // Draw base layer from scratch
+      // Enable smooth rendering for live updates
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // Clear canvas efficiently
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw canvas background based on store settings
+      drawCanvasBackground(ctx, canvas.width, canvas.height);
+
+      // Save context for zoomed artboard
+      ctx.save();
+
+      // Apply zoom transformation to the entire artboard (artboard itself zooms)
+      // The artboard will grow/shrink while staying centered in the same position
+      const effectiveZoom = zoom * defaultViewScale;
+      ctx.translate(
+        Math.round(offsetX + ARTBOARD_WIDTH / 2),
+        Math.round(offsetY + ARTBOARD_HEIGHT / 2)
+      );
+      ctx.scale(effectiveZoom, effectiveZoom);
+      ctx.translate(
+        Math.round(-ARTBOARD_WIDTH / 2),
+        Math.round(-ARTBOARD_HEIGHT / 2)
+      );
+
+      // Draw bleed area (subtle red) - optimized for smoothness
+      ctx.strokeStyle = '#DC2626';
+      ctx.fillStyle = 'rgba(220, 38, 38, 0.03)';
+      ctx.lineWidth = Math.max(0.5, 1 / effectiveZoom); // Ensure minimum line width for smoothness
+      ctx.setLineDash([
+        Math.max(2, 4 / effectiveZoom),
+        Math.max(2, 4 / effectiveZoom),
+      ]); // Ensure minimum dash size
+      const bleedX = -BLEED_SIZE;
+      const bleedY = -BLEED_SIZE;
+      ctx.fillRect(
+        bleedX,
+        bleedY,
+        ARTBOARD_WIDTH + BLEED_SIZE * 2,
+        ARTBOARD_HEIGHT + BLEED_SIZE * 2
+      );
+      ctx.strokeRect(
+        bleedX,
+        bleedY,
+        ARTBOARD_WIDTH + BLEED_SIZE * 2,
+        ARTBOARD_HEIGHT + BLEED_SIZE * 2
+      );
+
+      // Draw trim area (artboard) - modern styling
+      ctx.strokeStyle = '#007AFF';
+      ctx.fillStyle = '#ffffff';
+      ctx.lineWidth = Math.max(2, 3 / effectiveZoom); // Slightly thicker border for better visibility
+      ctx.setLineDash([]);
+
+      // Add visual feedback for artboard dragging
+      if (isDraggingArtboard) {
+        // Enhanced shadow and border during dragging
+        ctx.shadowColor = 'rgba(0, 122, 255, 0.3)';
+        ctx.shadowBlur = 15;
+        ctx.shadowOffsetX = 4;
+        ctx.shadowOffsetY = 4;
+        ctx.strokeStyle = '#007AFF';
+        ctx.lineWidth = Math.max(3, 4 / effectiveZoom); // Thicker border when dragging
+      } else {
+        // Normal shadow for artboard
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+        ctx.strokeStyle = '#007AFF';
+        ctx.lineWidth = Math.max(2, 3 / effectiveZoom);
+      }
+
+      ctx.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT);
+      ctx.strokeRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT);
+
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+
+      // Draw objects within the same transformation context as the artboard
+      drawObjects(ctx, 0, 0, effectiveZoom); // Use effective zoom for proper scaling
+
+      // Restore context
+      ctx.restore();
+
+      // Draw rotation angle display when rotating
+      if (
+        isTransforming &&
+        transformHandle === 'rotate' &&
+        selectedObjects.length > 0
+      ) {
+        const selectedObj = useEditorStore
+          .getState()
+          .objects.find((obj) => obj.id === selectedObjects[0]);
+        if (selectedObj) {
+          drawRotationAngle(ctx, selectedObj, currentRotation, effectiveZoom);
+        }
+      }
+
+      // Draw marquee selection (hide during artboard dragging)
+      if (isMarqueeSelecting && !isDraggingArtboard) {
+        drawMarqueeSelection(ctx, marqueeStart, marqueeEnd, effectiveZoom);
+      }
+
+      // Draw text tool indicator when text tool is active
+    }
+
+    // Always draw overlays (rulers, indicators, marquee, rotation HUD) on top
+    // Draw text tool indicator when text tool is active
+    if (activeTool === 'text') {
+      drawTextToolIndicator(ctx, canvas.width, canvas.height);
+    }
+
+    // Draw text drag preview
+    if (isDraggingText && isTextDragMode) {
+      drawTextDragPreview(ctx, offsetX, offsetY, zoom);
+    }
+
+    // Draw rulers on sides (fixed to canvas edges) - rulers should not be zoomed
+    // Use actual canvas dimensions for rulers to respect panel boundaries
+    drawRulers(
+      ctx,
+      canvas.width,
+      canvas.height,
+      offsetX,
+      offsetY,
+      ARTBOARD_WIDTH,
+      ARTBOARD_HEIGHT,
+      zoom,
+      RULER_SIZE
+    );
+  }, [
+    zoom,
+    documentDpi,
+    activeTool,
+    isDraggingText,
+    isTextDragMode,
+    textDragStart,
+    textDragEnd,
+    cursorPosition,
+    showCursorIndicators,
+    documentUnit,
+    panX,
+    panY,
+    selectedObjects,
+    objects,
+    isTransforming,
+    transformHandle,
+    currentRotation,
+    isMarqueeSelecting,
+    marqueeStart,
+    marqueeEnd,
+    canvasBackground,
+    isDraggingArtboard,
+  ]);
+
+  // Enhanced rulers with live cursor tracking and multi-unit support - 100% accurate positioning
+  const drawRulers = (
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number,
+    artboardX: number,
+    artboardY: number,
+    pageWidth: number,
+    pageHeight: number,
+    zoom: number,
+    RULER_SIZE: number
+  ) => {
+    // Calculate artboard center positions for ruler alignment
+    const artboardCenterX = artboardX + pageWidth / 2;
+    const artboardCenterY = artboardY + pageHeight / 2;
+
+    // Canvas boundaries - respect left panel (80px), right panel (300px), and top bar (60px)
+    const leftPanelWidth = 80;
+    const rightPanelWidth = 300;
+    const topBarHeight = 60;
+
+    // Calculate available canvas area (excluding panels and top bar)
+    const availableCanvasWidth = canvasWidth - leftPanelWidth - rightPanelWidth;
+    const availableCanvasHeight = canvasHeight - topBarHeight;
+
+    // Calculate ruler positions - attached to canvas edges within panel boundaries
+    const topRulerY = 0; // At the extreme top of the canvas
+
+    // Calculate vertical ruler position - at the extreme right edge of the canvas, avoiding corner overlap
+    const verticalRulerX = canvasWidth - RULER_SIZE - 1; // Slightly offset to avoid corner overlap
+
+    // Get current unit and DPI for accurate calculations
+    const currentUnit = documentUnit;
+    const currentDpi = documentDpi;
+
+    // Calculate target units for horizontal ruler (0-4)
+    const targetUnits = 4; // Show exactly 4 units (0, 1, 2, 3, 4)
+    const backgroundEndX = Math.min(
+      verticalRulerX,
+      convertToUnit(targetUnits, currentUnit, 'px', currentDpi)
+    ); // Don't exceed vertical ruler zero point
+
+    // Calculate bottom ruler position with margin from bottom
+    // bottomRulerY removed - bottom ruler defines canvas boundary
+
+    // Draw top ruler background (horizontal) - Shows exactly 4 units (0-4)
+    ctx.fillStyle = '#e5e7eb'; // Light gray background
+    ctx.fillRect(0, topRulerY, backgroundEndX, RULER_SIZE);
+    // Removed outline to match vertical ruler
+
+    // Bottom ruler removed - only top and vertical rulers remain
+
+    // Draw vertical ruler background (vertical) - Fill entire width and height to edge
+    ctx.fillStyle = '#e5e7eb'; // Same light gray as top ruler
+    ctx.fillRect(verticalRulerX, 0, canvasWidth - verticalRulerX, canvasHeight);
+    // Same styling as top ruler - no outline
+
+    // Left vertical and bottom horizontal rulers removed - they define the canvas boundary
+
+    // Draw subtle boundary lines where the canvas starts
+    ctx.strokeStyle = '#d1d5db'; // Light gray boundary color
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]); // Solid line
+
+    // Calculate zoom factor for boundary lines and ruler scaling
+    const effectiveZoom = zoom * defaultViewScale;
+    const zoomFactor = Math.max(0.1, Math.min(10, effectiveZoom)); // Clamp effective zoom between 10% and 1000%
+
+    // Dynamic range calculation based on zoom level
+    // At 100% zoom (effectiveZoom = 0.25), show 4 units
+    // When zooming out (smaller effectiveZoom), show more units
+    // When zooming in (larger effectiveZoom), show fewer units
+    const baseRange = 4; // Base range at 25% effective zoom (100% zoom value)
+    const calculatedRange = baseRange / (effectiveZoom / 0.25); // Scale relative to 25% effective zoom
+
+    // Allow infinite scaling - no arbitrary limits
+    const wholeNumberRange = Math.max(1, Math.ceil(calculatedRange)); // No upper limit for infinite scaling
+
+    // Left boundary line (vertical) - where canvas starts (aligned with zoom-adjusted range)
+    ctx.beginPath();
+    ctx.moveTo(
+      artboardCenterX -
+        convertToUnit(wholeNumberRange, currentUnit, 'px', currentDpi),
+      0
+    ); // Align with zoom-adjusted range
+    ctx.lineTo(
+      artboardCenterX -
+        convertToUnit(wholeNumberRange, currentUnit, 'px', currentDpi),
+      canvasHeight
+    );
+    ctx.stroke();
+
+    // Bottom boundary line (horizontal) - where canvas starts (aligned with zoom-adjusted range)
+    ctx.beginPath();
+    ctx.moveTo(
+      0,
+      artboardCenterY -
+        convertToUnit(wholeNumberRange, currentUnit, 'px', currentDpi)
+    ); // Align with zoom-adjusted range
+    ctx.lineTo(
+      canvasWidth,
+      artboardCenterY -
+        convertToUnit(wholeNumberRange, currentUnit, 'px', currentDpi)
+    );
+    ctx.stroke();
+
+    // Calculate tick intervals based on current unit and zoom level
+    let baseInterval: number, unitLabel: string;
+
+    switch (currentUnit) {
+      case 'in':
+        baseInterval = 1; // 1 inch base interval
+        unitLabel = '"';
+        break;
+      case 'cm':
+        baseInterval = 1; // 1 cm base interval
+        unitLabel = 'cm';
+        break;
+      case 'mm':
+        baseInterval = 10; // 10mm base interval
+        unitLabel = 'mm';
+        break;
+      case 'ft':
+        baseInterval = 1; // 1 foot base interval
+        unitLabel = "'";
+        break;
+      default:
+        baseInterval = 100; // 100px base interval
+        unitLabel = 'px';
+    }
+
+    // Dynamic interval adjustment based on zoom and range
+    // Calculate the optimal interval based on the current range and zoom level
+    let majorInterval: number;
+
+    if (effectiveZoom <= 0.125) {
+      // Very zoomed out (25% or less of default): show smaller intervals for more detail
+      if (baseInterval === 1) {
+        majorInterval = 1; // Keep whole numbers for units like in, cm, ft
+      } else {
+        majorInterval = Math.max(1, Math.floor(baseInterval / 4));
+      }
+    } else if (effectiveZoom <= 0.2) {
+      // Moderately zoomed out (40% of default): moderate intervals
+      if (baseInterval === 1) {
+        majorInterval = 1;
+      } else {
+        majorInterval = Math.max(1, Math.floor(baseInterval / 2));
+      }
+    } else if (effectiveZoom >= 0.5) {
+      // Zoomed in (200% or more): show larger intervals to avoid clutter
+      majorInterval =
+        baseInterval * Math.min(4, Math.ceil(effectiveZoom / 0.25));
+    } else {
+      // Normal zoom: use base interval
+      majorInterval = baseInterval;
+    }
+
+    // Allow infinite scaling - no arbitrary limits on interval
+    majorInterval = majorInterval; // Keep calculated interval for infinite scaling
+
+    // Draw horizontal ruler ticks (top ruler) - Professional ruler with subdivisions
+    const rulerStartX =
+      artboardCenterX -
+      convertToUnit(wholeNumberRange, currentUnit, 'px', currentDpi);
+    const rulerEndX =
+      artboardCenterX +
+      convertToUnit(wholeNumberRange, currentUnit, 'px', currentDpi);
+
+    // Draw major ticks (whole numbers) with labels
+    for (
+      let value = -wholeNumberRange;
+      value <= wholeNumberRange;
+      value += majorInterval
+    ) {
+      const x =
+        artboardCenterX + convertToUnit(value, currentUnit, 'px', currentDpi);
+      if (x >= 0 && x <= canvasWidth) {
+        const majorTickHeight = 10; // Major tick extends full height
+
+        // Professional major tick styling
+        ctx.strokeStyle = '#374151';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, topRulerY + RULER_SIZE - majorTickHeight);
+        ctx.lineTo(x, topRulerY + RULER_SIZE);
+        ctx.stroke();
+
+        // Major tick label (whole numbers only)
+        ctx.fillStyle = '#1f2937';
+        ctx.font = 'bold 11px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${value}${unitLabel}`, x, topRulerY + RULER_SIZE / 2 + 4);
+      }
+    }
+
+    // Draw minor subdivisions (quarter ticks) for professional look
+    const minorInterval = majorInterval / 4; // Quarter subdivisions
+    const minorTickRange = wholeNumberRange; // Allow infinite minor tick scaling
+    for (
+      let value = -minorTickRange;
+      value <= minorTickRange;
+      value += minorInterval
+    ) {
+      const x =
+        artboardCenterX + convertToUnit(value, currentUnit, 'px', currentDpi);
+      if (x >= 0 && x <= canvasWidth) {
+        // Skip major ticks (already drawn)
+        if (value % majorInterval === 0) continue;
+
+        const minorTickHeight = 6; // Smaller minor ticks
+
+        // Professional minor tick styling (lighter color)
+        ctx.strokeStyle = '#9ca3af'; // Lighter gray for minor ticks
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, topRulerY + RULER_SIZE - minorTickHeight);
+        ctx.lineTo(x, topRulerY + RULER_SIZE);
+        ctx.stroke();
+      }
+    }
+
+    // Bottom ruler ticks removed - only top and vertical ruler ticks remain
+
+    // Draw vertical ruler ticks - Professional ruler with subdivisions
+
+    // Draw major ticks (whole numbers) with labels
+    for (
+      let value = -wholeNumberRange;
+      value <= wholeNumberRange;
+      value += majorInterval
+    ) {
+      const y =
+        artboardCenterY + convertToUnit(value, currentUnit, 'px', currentDpi);
+      if (y >= topRulerY + RULER_SIZE && y <= canvasHeight) {
+        const majorTickHeight = 10; // Major tick extends full width
+
+        // Professional major tick styling
+        ctx.strokeStyle = '#374151';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(verticalRulerX, y);
+        ctx.lineTo(verticalRulerX + majorTickHeight, y);
+        ctx.stroke();
+
+        // Major tick label (whole numbers only)
+        ctx.fillStyle = '#1f2937';
+        ctx.font = 'bold 11px Inter';
+        ctx.textAlign = 'center';
+        ctx.save();
+        ctx.translate(verticalRulerX + RULER_SIZE / 2, y);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText(`${value}${unitLabel}`, 0, 0);
+        ctx.restore();
+      }
+    }
+
+    // Draw minor subdivisions (quarter ticks) for professional vertical ruler
+    const verticalMinorInterval = majorInterval / 4; // Quarter subdivisions
+    const verticalMinorTickRange = wholeNumberRange; // Allow infinite minor tick scaling
+    for (
+      let value = -verticalMinorTickRange;
+      value <= verticalMinorTickRange;
+      value += verticalMinorInterval
+    ) {
+      const y =
+        artboardCenterY + convertToUnit(value, currentUnit, 'px', currentDpi);
+      if (y >= topRulerY + RULER_SIZE && y <= canvasHeight) {
+        // Skip major ticks (already drawn)
+        if (value % majorInterval === 0) continue;
+
+        const minorTickHeight = 6; // Smaller minor ticks
+
+        // Professional minor tick styling (lighter color)
+        ctx.strokeStyle = '#9ca3af'; // Lighter gray for minor ticks
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(verticalRulerX, y);
+        ctx.lineTo(verticalRulerX + minorTickHeight, y);
+        ctx.stroke();
+      }
+    }
+
+    // Left vertical and bottom horizontal ruler ticks removed - they define the canvas boundary
+
+    // Draw live cursor indicators (RED RECTANGLES) - 100% accurate positioning
+    if (
+      showCursorIndicators &&
+      cursorPosition.x > RULER_SIZE &&
+      cursorPosition.y > RULER_SIZE &&
+      cursorPosition.x < canvasWidth - RULER_SIZE &&
+      cursorPosition.y < canvasHeight - RULER_SIZE
+    ) {
+      // Horizontal cursor indicator (top ruler) - Rectangle pointing to ruler line
+      ctx.fillStyle = '#DC2626'; // Red color
+      ctx.fillRect(cursorPosition.x - 2, topRulerY + RULER_SIZE - 8, 4, 8); // Rectangle pointing to ruler line
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cursorPosition.x - 2, topRulerY + RULER_SIZE - 8, 4, 8);
+
+      // Vertical cursor indicator (right ruler) - Match tick direction
+      ctx.fillStyle = '#DC2626'; // Same red color as top ruler
+      ctx.fillRect(verticalRulerX, cursorPosition.y - 2, 8, 4); // Match tick direction: from left edge
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(verticalRulerX, cursorPosition.y - 2, 8, 4);
+
+      // Left vertical and bottom horizontal cursor indicators removed - they define the canvas boundary
+
+      // Show cursor position values - 100% accurate calculations with zoom and pan
+      // Calculate cursor position relative to artboard center, accounting for zoom
+      const cursorRelativeX = (cursorPosition.x - artboardCenterX) / currentDpi;
+      const cursorRelativeY = (cursorPosition.y - artboardCenterY) / currentDpi;
+      const cursorValueX = convertToUnit(
+        cursorRelativeX,
+        'in',
+        currentUnit,
+        currentDpi
+      );
+      const cursorValueY = convertToUnit(
+        cursorRelativeY,
+        'in',
+        currentUnit,
+        currentDpi
+      );
+
+      // Display cursor position on top ruler - Enhanced visibility
+      ctx.fillStyle = '#DC2626'; // Red color for pointer text
+      ctx.font = 'bold 10px Inter'; // Slightly larger font
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        `${formatUnitValue(cursorValueX, currentUnit)}${unitLabel}`,
+        cursorPosition.x,
+        topRulerY + RULER_SIZE / 2 + 3
+      );
+
+      // Display cursor position on vertical ruler - Exact copy of top ruler rotated 90 degrees
+      ctx.save();
+      ctx.translate(verticalRulerX + RULER_SIZE / 2, cursorPosition.y);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = '#DC2626'; // Same red color as top ruler
+      ctx.font = 'bold 10px Inter'; // Same font as top ruler
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        `${formatUnitValue(cursorValueY, currentUnit)}${unitLabel}`,
+        0,
+        0
+      );
+      ctx.restore();
+
+      // Bottom ruler text display removed - only top and vertical rulers remain
+    }
+
+    // Cache the rendered viewport for performance
+    if (
+      !isTransforming &&
+      !isDraggingObject &&
+      !isPanning &&
+      canvasRef.current
+    ) {
+      const imageData = ctx.getImageData(
+        0,
+        0,
+        canvasRef.current.width,
+        canvasRef.current.height
+      );
+      setViewportCache({
+        imageData,
+        zoom,
+        panX: useEditorStore.getState().panX,
+        panY: useEditorStore.getState().panY,
+        backgroundType: canvasBackground.type,
+        backgroundColor: canvasBackground.color,
+        backgroundOpacity: canvasBackground.opacity,
+        backgroundGridSize: canvasBackground.gridSize,
+      });
+    }
+  };
+
+  // Draw all objects on canvas
+  const drawObjects = (
+    ctx: CanvasRenderingContext2D,
+    offsetX: number,
+    offsetY: number,
+    zoom: number
+  ) => {
+    const objects = useEditorStore.getState().objects;
+    const selection = useEditorStore.getState().selection;
+
+    objects.forEach((obj) => {
+      ctx.save();
+
+      // Convert document units to pixels - objects are now in artboard coordinate space
+      const x = obj.x * documentDpi;
+      const y = obj.y * documentDpi;
+      const width = obj.width * documentDpi;
+      const height = obj.height * documentDpi;
+
+      // Apply rotation
+      if (obj.rotation !== 0) {
+        ctx.translate(x + width / 2, y + height / 2);
+        ctx.rotate((obj.rotation * Math.PI) / 180);
+        ctx.translate(-width / 2, -height / 2);
+      } else {
+        ctx.translate(x, y);
+      }
+
+      // Apply opacity
+      ctx.globalAlpha = obj.opacity;
+
+      // Apply blend mode
+      if (obj.blendMode && obj.blendMode !== 'normal') {
+        ctx.globalCompositeOperation =
+          obj.blendMode as GlobalCompositeOperation;
+      }
+
+      // Apply layer effects (drop shadow, outer glow)
+      if (obj.effects?.dropShadow && !isDraggingObject) {
+        const shadow = obj.effects.dropShadow;
+        ctx.shadowColor = `${shadow.color}${Math.round(shadow.opacity * 255)
+          .toString(16)
+          .padStart(2, '0')}`;
+        ctx.shadowBlur = shadow.blur;
+        ctx.shadowOffsetX = shadow.offsetX;
+        ctx.shadowOffsetY = shadow.offsetY;
+      } else if (obj.effects?.outerGlow && !isDraggingObject) {
+        const glow = obj.effects.outerGlow;
+        ctx.shadowColor = `${glow.color}${Math.round(glow.opacity * 255)
+          .toString(16)
+          .padStart(2, '0')}`;
+        ctx.shadowBlur = glow.blur;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else if (isDraggingObject && selection.includes(obj.id)) {
+        // Add subtle shadow/shadow effect when dragging
+        ctx.shadowColor = 'rgba(0, 122, 255, 0.3)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+      } else {
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+
+      // Draw based on object type
+      if (obj.type === 'text') {
+        drawTextObject(
+          ctx,
+          obj,
+          width,
+          height,
+          selection.includes(obj.id),
+          zoom
+        );
+      } else if (obj.type === 'shape') {
+        drawShapeObject(
+          ctx,
+          obj,
+          width,
+          height,
+          selection.includes(obj.id),
+          zoom
+        );
+      } else if (obj.type === 'path') {
+        drawPathObject(
+          ctx,
+          obj,
+          width,
+          height,
+          selection.includes(obj.id),
+          zoom
+        );
+      }
+
+      // Reset composite operation to normal
+      ctx.globalCompositeOperation = 'source-over';
+
+      ctx.restore();
+    });
+  };
+
+  // Draw modern transform handles for selected objects
+  const drawTransformHandles = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    zoom: number
+  ) => {
+    const handleSize = Math.max(12, 12 / zoom); // Larger handles for better interaction
+    const handleHalf = handleSize / 2;
+    const handleRadius = handleSize / 2;
+
+    // Modern handle style with rounded corners and gradient-like effect
+    const handleStyle = {
+      fill: '#ffffff',
+      stroke: '#007AFF', // Modern blue color
+      shadow: 'rgba(0, 122, 255, 0.3)',
+      strokeWidth: 2,
+    };
+
+    // Define handle positions (8 handles around the object)
+    const handles = [
+      { x: -handleHalf, y: -handleHalf, type: 'nw', cursor: 'nw-resize' }, // Top-left
+      {
+        x: width / 2 - handleHalf,
+        y: -handleHalf,
+        type: 'n',
+        cursor: 'ns-resize',
+      }, // Top
+      {
+        x: width - handleHalf,
+        y: -handleHalf,
+        type: 'ne',
+        cursor: 'ne-resize',
+      }, // Top-right
+      {
+        x: width - handleHalf,
+        y: height / 2 - handleHalf,
+        type: 'e',
+        cursor: 'ew-resize',
+      }, // Right
+      {
+        x: width - handleHalf,
+        y: height - handleHalf,
+        type: 'se',
+        cursor: 'se-resize',
+      }, // Bottom-right
+      {
+        x: width / 2 - handleHalf,
+        y: height - handleHalf,
+        type: 's',
+        cursor: 'ns-resize',
+      }, // Bottom
+      {
+        x: -handleHalf,
+        y: height - handleHalf,
+        type: 'sw',
+        cursor: 'sw-resize',
+      }, // Bottom-left
+      {
+        x: -handleHalf,
+        y: height / 2 - handleHalf,
+        type: 'w',
+        cursor: 'ew-resize',
+      }, // Left
+    ];
+
+    // Draw each handle with modern styling
+    handles.forEach((handle) => {
+      // Draw shadow for depth
+      ctx.fillStyle = handleStyle.shadow;
+      ctx.beginPath();
+      ctx.arc(
+        handle.x + handleHalf + 1,
+        handle.y + handleHalf + 1,
+        handleRadius,
+        0,
+        2 * Math.PI
+      );
+      ctx.fill();
+
+      // Draw handle background with rounded corners
+      ctx.fillStyle = handleStyle.fill;
+      ctx.strokeStyle = handleStyle.stroke;
+      ctx.lineWidth = handleStyle.strokeWidth;
+      ctx.beginPath();
+      ctx.roundRect(handle.x, handle.y, handleSize, handleSize, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      // Draw handle center indicator
+      ctx.fillStyle = handleStyle.stroke;
+      ctx.beginPath();
+      ctx.arc(handle.x + handleHalf, handle.y + handleHalf, 2, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+
+    // Draw modern rotation handle (outside top center)
+    const rotationHandleY = -handleSize - 8;
+    const rotationHandleX = width / 2 - handleHalf;
+
+    // Rotation handle shadow
+    ctx.fillStyle = handleStyle.shadow;
+    ctx.beginPath();
+    ctx.arc(
+      rotationHandleX + handleHalf + 1,
+      rotationHandleY + handleHalf + 1,
+      handleRadius,
+      0,
+      2 * Math.PI
+    );
+    ctx.fill();
+
+    // Rotation handle background
+    ctx.fillStyle = handleStyle.fill;
+    ctx.strokeStyle = handleStyle.stroke;
+    ctx.lineWidth = handleStyle.strokeWidth;
+    ctx.beginPath();
+    ctx.roundRect(rotationHandleX, rotationHandleY, handleSize, handleSize, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Modern rotation icon
+    ctx.strokeStyle = handleStyle.stroke;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+
+    // Draw curved arrow for rotation
+    const centerX = rotationHandleX + handleHalf;
+    const centerY = rotationHandleY + handleHalf;
+    const radius = handleHalf - 3;
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, -Math.PI / 3, Math.PI / 3);
+    ctx.stroke();
+
+    // Draw arrow head
+    ctx.beginPath();
+    ctx.moveTo(
+      centerX + radius * Math.cos(Math.PI / 3),
+      centerY + radius * Math.sin(Math.PI / 3)
+    );
+    ctx.lineTo(
+      centerX + radius * Math.cos(Math.PI / 3) - 3,
+      centerY + radius * Math.sin(Math.PI / 3) - 3
+    );
+    ctx.moveTo(
+      centerX + radius * Math.cos(Math.PI / 3),
+      centerY + radius * Math.sin(Math.PI / 3)
+    );
+    ctx.lineTo(
+      centerX + radius * Math.cos(Math.PI / 3) + 3,
+      centerY + radius * Math.sin(Math.PI / 3) - 3
+    );
+    ctx.stroke();
+  };
+
+  // Draw rotation angle display
+  const drawRotationAngle = (
+    ctx: CanvasRenderingContext2D,
+    obj: any,
+    rotation: number,
+    zoom: number
+  ) => {
+    // Calculate object center position
+    const centerX = (obj.x + obj.width / 2) * documentDpi;
+    const centerY = (obj.y + obj.height / 2) * documentDpi;
+
+    // Position angle display above the object
+    const displayX = centerX;
+    const displayY = centerY - 60 / zoom; // 60px above center
+
+    // Draw angle display background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(
+      displayX - 40 / zoom,
+      displayY - 15 / zoom,
+      80 / zoom,
+      30 / zoom
+    );
+
+    // Draw angle text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${14 / zoom}px Inter, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const angleText = `${Math.round(rotation)}°`;
+    ctx.fillText(angleText, displayX, displayY);
+
+    // Draw rotation line from center to rotation handle
+    const handleY = centerY - 40 / zoom;
+    ctx.strokeStyle = '#007AFF';
+    ctx.lineWidth = 2 / zoom;
+    ctx.setLineDash([5 / zoom, 5 / zoom]);
+
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(centerX, handleY);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+  };
+
+  // Draw canvas background patterns
+  const drawCanvasBackground = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ) => {
+    ctx.save();
+
+    switch (canvasBackground.type) {
+      case 'transparent':
+        // Draw checkerboard pattern for transparency
+        drawCheckerboardPattern(ctx, width, height);
+        break;
+      case 'grid':
+        drawGridPattern(ctx, width, height);
+        break;
+      case 'dots':
+        drawDotsPattern(ctx, width, height);
+        break;
+      case 'checkerboard':
+        drawCheckerboardPattern(ctx, width, height);
+        break;
+      case 'solid':
+      default:
+        drawSolidBackground(ctx, width, height);
+        break;
+    }
+
+    ctx.restore();
+  };
+
+  const drawSolidBackground = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ) => {
+    ctx.fillStyle = canvasBackground.color;
+    ctx.globalAlpha = canvasBackground.opacity;
+    ctx.fillRect(0, 0, width, height);
+  };
+
+  const drawGridPattern = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ) => {
+    // Fill with background color
+    ctx.fillStyle = canvasBackground.color;
+    ctx.globalAlpha = canvasBackground.opacity;
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw grid lines
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 1;
+
+    const gridSize = canvasBackground.gridSize;
+
+    // Draw vertical lines
+    for (let x = 0; x <= width; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+
+    // Draw horizontal lines
+    for (let y = 0; y <= height; y += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+  };
+
+  const drawDotsPattern = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ) => {
+    // Fill with background color
+    ctx.fillStyle = canvasBackground.color;
+    ctx.globalAlpha = canvasBackground.opacity;
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw dots
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.globalAlpha = 1;
+
+    const gridSize = canvasBackground.gridSize;
+    const dotSize = 2;
+
+    for (let x = gridSize; x < width; x += gridSize) {
+      for (let y = gridSize; y < height; y += gridSize) {
+        ctx.beginPath();
+        ctx.arc(x, y, dotSize, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
+  };
+
+  const drawCheckerboardPattern = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ) => {
+    const gridSize = canvasBackground.gridSize;
+    const lightColor = canvasBackground.color;
+    const darkColor = 'rgba(0, 0, 0, 0.05)';
+
+    ctx.globalAlpha = canvasBackground.opacity;
+
+    for (let x = 0; x < width; x += gridSize) {
+      for (let y = 0; y < height; y += gridSize) {
+        const isEven = Math.floor(x / gridSize) + Math.floor(y / gridSize);
+        ctx.fillStyle = isEven % 2 === 0 ? lightColor : darkColor;
+        ctx.fillRect(x, y, gridSize, gridSize);
+      }
+    }
+  };
+
+  // Draw marquee selection
+  const drawMarqueeSelection = (
+    ctx: CanvasRenderingContext2D,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    zoom: number
+  ) => {
+    // Convert document coordinates to canvas coordinates
+    const startX = start.x * documentDpi * zoom;
+    const startY = start.y * documentDpi * zoom;
+    const endX = end.x * documentDpi * zoom;
+    const endY = end.y * documentDpi * zoom;
+
+    // Calculate marquee rectangle
+    const left = Math.min(startX, endX);
+    const top = Math.min(startY, endY);
+    const width = Math.abs(endX - startX);
+    const height = Math.abs(endY - startY);
+
+    // Draw marquee background (semi-transparent)
+    ctx.fillStyle = 'rgba(0, 122, 255, 0.1)';
+    ctx.fillRect(left, top, width, height);
+
+    // Draw marquee border
+    ctx.strokeStyle = '#007AFF';
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([5 / zoom, 5 / zoom]);
+    ctx.strokeRect(left, top, width, height);
+
+    ctx.setLineDash([]);
+  };
+
+  // Draw text object
+  const drawTextObject = (
+    ctx: CanvasRenderingContext2D,
+    obj: any,
+    width: number,
+    height: number,
+    isSelected: boolean,
+    zoom: number
+  ) => {
+    const isEditing = isTextEditing && editingTextId === obj.id;
+    const isPlaceholder = obj.text === 'Type here...';
+
+    // Set text properties with enhanced support
+    if (isPlaceholder && !isEditing) {
+      // Placeholder text styling
+      ctx.fillStyle = 'rgba(111, 20, 20, 0.4)';
+      ctx.font = `${obj.fontStyle || 'normal'} ${obj.fontWeight || 400} ${obj.fontSize * zoom}px ${obj.fontFamily || 'Inter'}`;
+    } else {
+      ctx.fillStyle = obj.textFill || obj.color || '#000000';
+      ctx.font = `${obj.fontStyle || 'normal'} ${obj.fontWeight || 400} ${obj.fontSize * zoom}px ${obj.fontFamily || 'Inter'}`;
+    }
+
+    ctx.textAlign = obj.textAlign || 'left';
+    ctx.textBaseline = 'top';
+
+    // Apply text shadow if defined (not for placeholder)
+    if (!isPlaceholder && obj.textShadow && obj.textShadow !== 'none') {
+      ctx.shadowColor = obj.textShadow.includes('rgba')
+        ? obj.textShadow.match(/rgba?\([^)]+\)/)?.[0] || 'rgba(0,0,0,0.3)'
+        : 'rgba(0,0,0,0.3)';
+      ctx.shadowBlur = parseInt(obj.textShadow.match(/\d+/)?.[0] || '2');
+      ctx.shadowOffsetX = parseInt(obj.textShadow.match(/\d+/)?.[1] || '2');
+      ctx.shadowOffsetY = parseInt(obj.textShadow.match(/\d+/)?.[2] || '2');
+    } else {
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    }
+
+    // Apply text stroke if defined (not for placeholder)
+    if (!isPlaceholder && obj.textStroke && obj.textStroke !== 'none') {
+      ctx.strokeStyle = obj.textStroke;
+      ctx.lineWidth = obj.textStrokeWidth || 1;
+    }
+
+    // Draw text background if selected or editing
+    if (isSelected || isEditing) {
+      ctx.fillStyle = 'rgba(111, 20, 20, 0.1)';
+      ctx.fillRect(0, 0, width, height);
+      // Reset fill style based on whether it's placeholder or not
+      if (isPlaceholder && !isEditing) {
+        ctx.fillStyle = 'rgba(111, 20, 20, 0.4)';
+      } else {
+        ctx.fillStyle = obj.textFill || obj.color || '#000000';
+      }
+    }
+
+    // Draw text with enhanced properties including lists and text on path
+    const lines = obj.text.split('\n');
+    const lineHeight = obj.fontSize * (obj.lineHeight || 1.2) * zoom;
+    const letterSpacing = (obj.letterSpacing || 0) * zoom;
+
+    // Handle text on path
+    if (obj.wrapMode === 'path' && obj.pathData) {
+      drawTextOnPath(ctx, obj, lines, width, height, zoom, isPlaceholder);
+    } else {
+      // Handle regular text rendering with lists
+      lines.forEach((line: string, index: number) => {
+        const y = index * lineHeight;
+
+        // Apply list formatting
+        let displayLine = line;
+        let indentOffset = 0;
+
+        if (obj.listType && obj.listType !== 'none') {
+          const listStyle = obj.listStyle || {};
+          const indentSize = (listStyle.indentSize || 20) * zoom;
+
+          // Add list marker
+          let marker = '';
+          switch (obj.listType) {
+            case 'bullet':
+              marker = listStyle.bulletChar || '•';
+              break;
+            case 'number':
+              marker = `${index + 1}${listStyle.numberFormat?.includes('.') ? '.' : listStyle.numberFormat?.includes(')') ? ')' : '.'}`;
+              break;
+            case 'letter':
+              marker = `${String.fromCharCode(97 + index)}${listStyle.numberFormat?.includes('.') ? '.' : listStyle.numberFormat?.includes(')') ? ')' : '.'}`;
+              break;
+            case 'roman':
+              marker = `${toRoman(index + 1)}${listStyle.numberFormat?.includes('.') ? '.' : listStyle.numberFormat?.includes(')') ? ')' : '.'}`;
+              break;
+          }
+
+          displayLine = `${marker} ${line}`;
+          indentOffset = indentSize;
+        }
+
+        // Apply text transform
+        let transformedLine = displayLine;
+        switch (obj.textTransform) {
+          case 'uppercase':
+            transformedLine = displayLine.toUpperCase();
+            break;
+          case 'lowercase':
+            transformedLine = displayLine.toLowerCase();
+            break;
+          case 'capitalize':
+            transformedLine = displayLine.replace(/\b\w/g, (l) =>
+              l.toUpperCase()
+            );
+            break;
+          default:
+            transformedLine = displayLine;
+        }
+
+        // Draw text with letter spacing and indentation
+        const startX = indentOffset;
+
+        if (letterSpacing > 0) {
+          let x = startX;
+          for (let i = 0; i < transformedLine.length; i++) {
+            const char = transformedLine[i];
+            ctx.fillText(char, x, y);
+            x += ctx.measureText(char).width + letterSpacing;
+          }
+        } else {
+          ctx.fillText(transformedLine, startX, y);
+        }
+
+        // Draw stroke if defined (not for placeholder)
+        if (!isPlaceholder && obj.textStroke && obj.textStroke !== 'none') {
+          if (letterSpacing > 0) {
+            let x = startX;
+            for (let i = 0; i < transformedLine.length; i++) {
+              const char = transformedLine[i];
+              ctx.strokeText(char, x, y);
+              x += ctx.measureText(char).width + letterSpacing;
+            }
+          } else {
+            ctx.strokeText(transformedLine, startX, y);
+          }
+        }
+      });
+    }
+
+    // Draw cursor if editing
+    if (isEditing) {
+      const lastLine = lines[lines.length - 1] || '';
+      let cursorX = 0;
+
+      if (letterSpacing > 0) {
+        for (let i = 0; i < lastLine.length; i++) {
+          cursorX += ctx.measureText(lastLine[i]).width + letterSpacing;
+        }
+      } else {
+        cursorX = ctx.measureText(lastLine).width;
+      }
+
+      const cursorY = (lines.length - 1) * lineHeight;
+
+      // Blinking cursor effect
+      const time = Date.now();
+      const blinkRate = 500; // milliseconds
+      const isVisible = Math.floor(time / blinkRate) % 2 === 0;
+
+      if (isVisible) {
+        ctx.fillStyle = obj.textFill || obj.color || '#000000';
+        ctx.fillRect(cursorX, cursorY, 1, lineHeight);
+      }
+    }
+
+    // Draw selection border and transform handles (hide during dragging)
+    if (isSelected && !isDraggingObject) {
+      // Draw modern selection border
+      ctx.strokeStyle = '#007AFF';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 4]);
+      ctx.strokeRect(0, 0, width, height);
+      ctx.setLineDash([]);
+
+      // Draw transform handles
+      drawTransformHandles(ctx, width, height, zoom);
+    }
+
+    // Reset shadow and stroke properties
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.strokeStyle = 'transparent';
+    ctx.lineWidth = 0;
+  };
+
+  // Draw shape object
+  const drawShapeObject = (
+    ctx: CanvasRenderingContext2D,
+    obj: any,
+    width: number,
+    height: number,
+    isSelected: boolean,
+    zoom: number
+  ) => {
+    // Set fill style
+    if (obj.fill?.color) {
+      ctx.fillStyle = obj.fill.color;
+    } else {
+      ctx.fillStyle = 'transparent';
+    }
+
+    // Set stroke style
+    if (obj.stroke && obj.stroke.width > 0) {
+      ctx.strokeStyle = obj.stroke.color || '#000000';
+      ctx.lineWidth = obj.stroke.width;
+      ctx.setLineDash(
+        obj.stroke.style === 'dashed'
+          ? [5, 5]
+          : obj.stroke.style === 'dotted'
+            ? [2, 2]
+            : []
+      );
+    } else {
+      ctx.strokeStyle = 'transparent';
+      ctx.lineWidth = 0;
+    }
+
+    // Draw based on shape type
+    switch (obj.shape) {
+      case 'rectangle':
+        if (obj.borderRadius && obj.borderRadius > 0) {
+          // Rounded rectangle
+          const radius = Math.min(obj.borderRadius, width / 2, height / 2);
+          ctx.beginPath();
+          ctx.roundRect(0, 0, width, height, radius);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          // Regular rectangle
+          ctx.fillRect(0, 0, width, height);
+          ctx.strokeRect(0, 0, width, height);
+        }
+        break;
+
+      case 'circle':
+        // Draw circle (width and height should be equal for perfect circle)
+        const radius = Math.min(width, height) / 2;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'triangle':
+        // Draw triangle
+        ctx.beginPath();
+        ctx.moveTo(width / 2, 0);
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'arrow':
+        // Draw arrow
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width * 0.7, height / 2);
+        ctx.lineTo(width * 0.7, height * 0.3);
+        ctx.lineTo(width, height / 2);
+        ctx.lineTo(width * 0.7, height * 0.7);
+        ctx.lineTo(width * 0.7, height / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'star':
+        // Draw 5-pointed star
+        const starCenterX = width / 2;
+        const starCenterY = height / 2;
+        const outerRadius = Math.min(width, height) / 2;
+        const innerRadius = outerRadius * 0.4;
+        const points = 5;
+
+        ctx.beginPath();
+        for (let i = 0; i < points * 2; i++) {
+          const angle = (i * Math.PI) / points;
+          const radius = i % 2 === 0 ? outerRadius : innerRadius;
+          const x = starCenterX + Math.cos(angle - Math.PI / 2) * radius;
+          const y = starCenterY + Math.sin(angle - Math.PI / 2) * radius;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'line':
+        // Draw line
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+        break;
+
+      case 'polygon':
+        // Draw hexagon (6-sided polygon)
+        const hexCenterX = width / 2;
+        const hexCenterY = height / 2;
+        const hexRadius = Math.min(width, height) / 2;
+        const hexSides = 6;
+
+        ctx.beginPath();
+        for (let i = 0; i < hexSides; i++) {
+          const angle = (i * Math.PI * 2) / hexSides - Math.PI / 2;
+          const x = hexCenterX + hexRadius * Math.cos(angle);
+          const y = hexCenterY + hexRadius * Math.sin(angle);
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'heart':
+        // Draw heart shape
+        ctx.beginPath();
+        const heartCenterX = width / 2;
+        const heartTop = 0;
+        const heartBottom = height;
+
+        // Left curve
+        ctx.moveTo(heartCenterX, heartBottom);
+        ctx.bezierCurveTo(
+          heartCenterX - width / 2,
+          heartBottom * 0.7,
+          heartCenterX - width / 2,
+          heartTop + height * 0.3,
+          heartCenterX - width / 4,
+          heartTop + height * 0.3
+        );
+        // Top left arc
+        ctx.bezierCurveTo(
+          heartCenterX - width / 2,
+          heartTop,
+          heartCenterX,
+          heartTop + height * 0.2,
+          heartCenterX,
+          heartTop + height * 0.3
+        );
+        // Top right arc
+        ctx.bezierCurveTo(
+          heartCenterX,
+          heartTop + height * 0.2,
+          heartCenterX + width / 2,
+          heartTop,
+          heartCenterX + width / 4,
+          heartTop + height * 0.3
+        );
+        // Right curve
+        ctx.bezierCurveTo(
+          heartCenterX + width / 2,
+          heartTop + height * 0.3,
+          heartCenterX + width / 2,
+          heartBottom * 0.7,
+          heartCenterX,
+          heartBottom
+        );
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'gear':
+        // Draw gear
+        const gearCenterX = width / 2;
+        const gearCenterY = height / 2;
+        const gearOuterRadius = Math.min(width, height) / 2;
+        const gearInnerRadius = gearOuterRadius * 0.7;
+        const teeth = 8;
+
+        ctx.beginPath();
+        for (let i = 0; i < teeth; i++) {
+          const angle1 = (i * Math.PI * 2) / teeth;
+          const angle2 = ((i + 0.4) * Math.PI * 2) / teeth;
+          const angle3 = ((i + 0.6) * Math.PI * 2) / teeth;
+          const angle4 = ((i + 1) * Math.PI * 2) / teeth;
+
+          // Inner arc
+          const x1 = gearCenterX + gearInnerRadius * Math.cos(angle1);
+          const y1 = gearCenterY + gearInnerRadius * Math.sin(angle1);
+
+          // Tooth start
+          const x2 = gearCenterX + gearOuterRadius * Math.cos(angle2);
+          const y2 = gearCenterY + gearOuterRadius * Math.sin(angle2);
+
+          // Tooth end
+          const x3 = gearCenterX + gearOuterRadius * Math.cos(angle3);
+          const y3 = gearCenterY + gearOuterRadius * Math.sin(angle3);
+
+          // Next inner arc
+          const x4 = gearCenterX + gearInnerRadius * Math.cos(angle4);
+          const y4 = gearCenterY + gearInnerRadius * Math.sin(angle4);
+
+          if (i === 0) {
+            ctx.moveTo(x1, y1);
+          }
+
+          ctx.lineTo(x2, y2);
+          ctx.lineTo(x3, y3);
+          ctx.lineTo(x4, y4);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'callout':
+        // Draw callout bubble
+        const calloutRadius = Math.min(width, height) * 0.1;
+        const calloutTailWidth = width * 0.15;
+        const calloutTailHeight = height * 0.3;
+        const calloutTailX = width / 2;
+
+        ctx.beginPath();
+        // Top left corner
+        ctx.moveTo(calloutRadius, 0);
+        ctx.lineTo(width - calloutRadius, 0);
+        // Top right corner
+        ctx.quadraticCurveTo(width, 0, width, calloutRadius);
+        ctx.lineTo(width, height - calloutRadius);
+        // Bottom right corner
+        ctx.quadraticCurveTo(width, height, width - calloutRadius, height);
+        ctx.lineTo(calloutTailX + calloutTailWidth, height);
+        // Tail
+        ctx.lineTo(calloutTailX, height + calloutTailHeight);
+        ctx.lineTo(calloutTailX - calloutTailWidth, height);
+        // Bottom left corner
+        ctx.lineTo(calloutRadius, height);
+        ctx.quadraticCurveTo(0, height, 0, height - calloutRadius);
+        ctx.lineTo(0, calloutRadius);
+        // Top left corner
+        ctx.quadraticCurveTo(0, 0, calloutRadius, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      default:
+        // Default rectangle
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeRect(0, 0, width, height);
+    }
+
+    // Reset line dash
+    ctx.setLineDash([]);
+
+    // Draw selection border and transform handles (hide during dragging)
+    if (isSelected && !isDraggingObject) {
+      // Draw modern selection border
+      ctx.strokeStyle = '#007AFF';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 4]);
+      ctx.strokeRect(0, 0, width, height);
+      ctx.setLineDash([]);
+
+      // Draw transform handles
+      drawTransformHandles(ctx, width, height, zoom);
+    }
+  };
+
+  // Draw path object (for SVG paths if needed in the future)
+  const drawPathObject = (
+    ctx: CanvasRenderingContext2D,
+    obj: any,
+    width: number,
+    height: number,
+    isSelected: boolean,
+    zoom: number
+  ) => {
+    // Set fill and stroke
+    ctx.fillStyle = obj.fill?.color || '#6F1414';
+    ctx.strokeStyle = obj.stroke?.color || '#5A1010';
+    ctx.lineWidth = obj.stroke?.width || 1;
+
+    // Draw the SVG path if available
+    if (obj.pathData) {
+      try {
+        const path2D = new Path2D(obj.pathData);
+        ctx.save();
+        ctx.scale(documentDpi, documentDpi);
+        ctx.fill(path2D);
+        ctx.stroke(path2D);
+        ctx.restore();
+      } catch (error) {
+        // Fallback to rectangle
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeRect(0, 0, width, height);
+      }
+    } else {
+      // No path data, draw rectangle
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeRect(0, 0, width, height);
+    }
+
+    // Draw selection border (hide during dragging)
+    if (isSelected && !isDraggingObject) {
+      ctx.strokeStyle = '#007AFF';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 4]);
+      ctx.strokeRect(0, 0, width, height);
+      ctx.setLineDash([]);
+      drawTransformHandles(ctx, width, height, zoom);
+    }
+  };
+
+  // Draw text tool indicator
+  const drawTextToolIndicator = (
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number
+  ) => {
+    ctx.save();
+
+    // Draw a subtle text cursor icon in the top-right corner
+    const iconSize = 20;
+    const margin = 10;
+    const x = canvasWidth - iconSize - margin;
+    const y = margin;
+
+    // Background circle
+    ctx.fillStyle = 'rgba(111, 20, 20, 0.8)';
+    ctx.beginPath();
+    ctx.arc(x + iconSize / 2, y + iconSize / 2, iconSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Text cursor icon
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y + 4);
+    ctx.lineTo(x + 6, y + 16);
+    ctx.moveTo(x + 4, y + 6);
+    ctx.lineTo(x + 8, y + 6);
+    ctx.moveTo(x + 4, y + 14);
+    ctx.lineTo(x + 8, y + 14);
+    ctx.stroke();
+
+    ctx.restore();
+  };
+
+  // Helper function to convert number to Roman numerals
+  const toRoman = (num: number): string => {
+    const values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+    const symbols = [
+      'M',
+      'CM',
+      'D',
+      'CD',
+      'C',
+      'XC',
+      'L',
+      'XL',
+      'X',
+      'IX',
+      'V',
+      'IV',
+      'I',
+    ];
+    let result = '';
+
+    for (let i = 0; i < values.length; i++) {
+      while (num >= values[i]) {
+        result += symbols[i];
+        num -= values[i];
+      }
+    }
+
+    return result.toLowerCase();
+  };
+
+  // Draw text on path
+  const drawTextOnPath = (
+    ctx: CanvasRenderingContext2D,
+    obj: any,
+    lines: string[],
+    width: number,
+    height: number,
+    zoom: number,
+    isPlaceholder: boolean
+  ) => {
+    try {
+      // Create SVG path element for text on path
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      const path = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'path'
+      );
+      path.setAttribute('d', obj.pathData);
+
+      const textPath = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'textPath'
+      );
+      textPath.setAttribute('href', '#path');
+      textPath.textContent = lines.join(' ');
+
+      const text = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'text'
+      );
+      text.appendChild(textPath);
+
+      svg.appendChild(path);
+      svg.appendChild(text);
+
+      // For now, draw text along a simple curved path
+      // This is a simplified implementation - in a full implementation,
+      // you would need more complex path calculation
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.min(width, height) / 3;
+
+      const textToDraw = lines.join(' ');
+      const chars = textToDraw.split('');
+      const angleStep = (Math.PI * 2) / Math.max(chars.length, 1);
+
+      chars.forEach((char, index) => {
+        const angle = angleStep * index + (obj.pathOffset || 0) * Math.PI * 2;
+        const x = centerX + Math.cos(angle) * radius;
+        const y = centerY + Math.sin(angle) * radius;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle + Math.PI / 2);
+
+        if (isPlaceholder) {
+          ctx.fillStyle = 'rgba(111, 20, 20, 0.4)';
+        } else {
+          ctx.fillStyle = obj.textFill || obj.color || '#000000';
+        }
+
+        ctx.fillText(char, 0, 0);
+        ctx.restore();
+      });
+    } catch (error) {
+      // Fallback to regular text if path rendering fails
+      const lineHeight = obj.fontSize * (obj.lineHeight || 1.2) * zoom;
+      lines.forEach((line: string, index: number) => {
+        const y = index * lineHeight;
+        if (isPlaceholder) {
+          ctx.fillStyle = 'rgba(111, 20, 20, 0.4)';
+        } else {
+          ctx.fillStyle = obj.textFill || obj.color || '#000000';
+        }
+        ctx.fillText(line, 0, y);
+      });
+    }
+  };
+
+  // Draw text drag preview
+  const drawTextDragPreview = (
+    ctx: CanvasRenderingContext2D,
+    offsetX: number,
+    offsetY: number,
+    zoom: number
+  ) => {
+    ctx.save();
+
+    const startX =
+      Math.min(textDragStart.x, textDragEnd.x) * documentDpi * zoom + offsetX;
+    const startY =
+      Math.min(textDragStart.y, textDragEnd.y) * documentDpi * zoom + offsetY;
+    const endX =
+      Math.max(textDragStart.x, textDragEnd.x) * documentDpi * zoom + offsetX;
+    const endY =
+      Math.max(textDragStart.y, textDragEnd.y) * documentDpi * zoom + offsetY;
+
+    const width = endX - startX;
+    const height = endY - startY;
+
+    // Draw dashed border for text box preview
+    ctx.strokeStyle = '#6F1414';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(startX, startY, width, height);
+    ctx.setLineDash([]);
+
+    // Draw semi-transparent fill
+    ctx.fillStyle = 'rgba(111, 20, 20, 0.1)';
+    ctx.fillRect(startX, startY, width, height);
+
+    // Draw "Text" label in center
+    ctx.fillStyle = '#6F1414';
+    ctx.font = `${16 * zoom}px Inter`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Text', startX + width / 2, startY + height / 2);
+
+    ctx.restore();
+  };
+
+  // Precise canvas area zoom - only in center area between bars (like Canva)
+  useEffect(() => {
+    const preventBrowserZoom = (e: WheelEvent) => {
+      // Only allow zoom in the precise canvas center area (between left, right, top bars)
+      const target = e.target as HTMLElement;
+      const isCanvasCenterArea =
+        target.closest('.editor-canvas') ||
+        target.closest('.canvas-center-area') ||
+        target.tagName === 'CANVAS';
+
+      // Only allow Alt+scroll OR trackpad gestures in canvas area, prevent everything else
+      if ((e.altKey || Math.abs(e.deltaY) < 1) && isCanvasCenterArea) {
+        // Allow Alt+scroll or trackpad pinch for canvas zoom ONLY
+        return true;
+      }
+
+      // HARD LOCK - Prevent ALL other zoom methods
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      // Force zoom reset
+      document.body.style.zoom = '1';
+      document.documentElement.style.zoom = '1';
+
+      return false;
+    };
+
+    const preventKeyboardZoom = (e: KeyboardEvent) => {
+      // Prevent ALL keyboard zoom shortcuts completely
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === '+' ||
+          e.key === '-' ||
+          e.key === '=' ||
+          e.key === '0' ||
+          e.key === 'Digit0')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // Force zoom reset
+        document.body.style.zoom = '1';
+        document.documentElement.style.zoom = '1';
+
+        return false;
+      }
+    };
+
+    const preventTouchZoom = (e: TouchEvent) => {
+      // Prevent ALL touch zoom completely
+      if (e.touches.length > 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // Force zoom reset
+        document.body.style.zoom = '1';
+        document.documentElement.style.zoom = '1';
+
+        return false;
+      }
+    };
+
+    const preventContextMenu = (e: MouseEvent) => {
+      // Prevent right-click context menu everywhere
+      if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // Force zoom reset
+        document.body.style.zoom = '1';
+        document.documentElement.style.zoom = '1';
+
+        return false;
+      }
+    };
+
+    // Add event listeners for COMPLETE zoom control
+    document.addEventListener('wheel', preventBrowserZoom, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener('keydown', preventKeyboardZoom, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener('touchstart', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener('touchmove', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener('contextmenu', preventContextMenu, {
+      passive: false,
+      capture: true,
+    });
+
+    // Additional zoom prevention
+    document.addEventListener('gesturestart', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener('gesturechange', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener('gestureend', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+
+    // Also prevent on window level
+    window.addEventListener('wheel', preventBrowserZoom, {
+      passive: false,
+      capture: true,
+    });
+    window.addEventListener('keydown', preventKeyboardZoom, {
+      passive: false,
+      capture: true,
+    });
+    window.addEventListener('gesturestart', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+    window.addEventListener('gesturechange', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+    window.addEventListener('gestureend', preventTouchZoom, {
+      passive: false,
+      capture: true,
+    });
+
+    return () => {
+      document.removeEventListener('wheel', preventBrowserZoom);
+      document.removeEventListener('keydown', preventKeyboardZoom);
+      document.removeEventListener('touchstart', preventTouchZoom);
+      document.removeEventListener('touchmove', preventTouchZoom);
+      document.removeEventListener('contextmenu', preventContextMenu);
+      document.removeEventListener('gesturestart', preventTouchZoom);
+      document.removeEventListener('gesturechange', preventTouchZoom);
+      document.removeEventListener('gestureend', preventTouchZoom);
+      window.removeEventListener('wheel', preventBrowserZoom);
+      window.removeEventListener('keydown', preventKeyboardZoom);
+      window.removeEventListener('gesturestart', preventTouchZoom);
+      window.removeEventListener('gesturechange', preventTouchZoom);
+      window.removeEventListener('gestureend', preventTouchZoom);
+    };
+  }, []);
+
+  // Force re-render when cursor position changes for live ruler indicators (throttled with RAF)
+  useEffect(() => {
+    if (isClient && showCursorIndicators) {
+      const frameId = requestAnimationFrame(() => {
+        setNeedsRender(true);
+      });
+
+      return () => cancelAnimationFrame(frameId);
+    }
+  }, [cursorPosition, showCursorIndicators, isClient]);
+
+  // Render when client-side and when specific values change - optimized for live updates
+  useEffect(() => {
+    if (isClient && needsRender) {
+      // Render immediately for live updates
+      renderCanvas();
+      setNeedsRender(false); // Reset render flag
+
+      // Use requestAnimationFrame for smooth animations only when needed
+      let animationId: number;
+      const scheduleRender = () => {
+        animationId = requestAnimationFrame(() => {
+          renderCanvas();
+          // CRITICAL: Always continue rendering during drag for smooth visual updates
+          // Check fresh state to ensure we keep rendering until drag ends
+          const currentState = useEditorStore.getState();
+          const isDragging =
+            useEditorStore.getState().selection.length > 0 &&
+            (isTransforming || isDraggingObject || isPanning);
+          if (isDragging) {
+            scheduleRender();
+          }
+        });
+      };
+
+      // Start animation if there's an ongoing interaction
+      // CRITICAL: This ensures continuous rendering during drag operations
+      if (isTransforming || isDraggingObject || isPanning) {
+        scheduleRender();
+      }
+
+      return () => {
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+        }
+      };
+    }
+  }, [
+    isClient,
+    needsRender,
+    renderCanvas,
+    isTransforming,
+    isDraggingObject,
+    isPanning,
+  ]);
+
+  // Get cursor style based on active tool, panning state, and hover position
+  const getCursorStyle = () => {
+    if (isPanning) {
+      return 'grabbing';
+    }
+
+    // Show move cursor when dragging artboard
+    if (isDraggingArtboard) {
+      return 'grabbing';
+    }
+
+    // Show move cursor when dragging objects
+    if (isDraggingObject) {
+      return 'move';
+    }
+
+    if (isTransforming && transformHandle) {
+      switch (transformHandle) {
+        case 'nw':
+        case 'se':
+          return 'nw-resize';
+        case 'ne':
+        case 'sw':
+          return 'ne-resize';
+        case 'n':
+        case 's':
+          return 'ns-resize';
+        case 'w':
+        case 'e':
+          return 'ew-resize';
+        case 'rotate':
+          return 'crosshair';
+        default:
+          return 'default';
+      }
+    }
+
+    // Check if hovering over any object or transform handles
+    const objects = useEditorStore.getState().objects;
+    let hoveredObject = null;
+
+    // Calculate artboard position on canvas for cursor detection
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ARTBOARD_WIDTH = 6 * 300; // 1800px (6 inches)
+      const ARTBOARD_HEIGHT = 4 * 300; // 1200px (4 inches)
+      const topBarHeight = 40;
+      const availableHeight = canvas.height - topBarHeight;
+
+      const artboardX = (canvas.width - ARTBOARD_WIDTH) / 2;
+      const artboardY = topBarHeight + (availableHeight - ARTBOARD_HEIGHT) / 2;
+
+      // Convert mouse position to artboard coordinates (account for view scale)
+      const effectiveZoom = zoom * defaultViewScale;
+      const artboardMouseX = (mousePosition.x - artboardX) / effectiveZoom;
+      const artboardMouseY = (mousePosition.y - artboardY) / effectiveZoom;
+
+      // Find the object being hovered over
+      for (const obj of objects) {
+        const objX = obj.x * documentDpi;
+        const objY = obj.y * documentDpi;
+        const objWidth = obj.width * documentDpi;
+        const objHeight = obj.height * documentDpi;
+
+        if (
+          artboardMouseX >= objX &&
+          artboardMouseX <= objX + objWidth &&
+          artboardMouseY >= objY &&
+          artboardMouseY <= objY + objHeight
+        ) {
+          hoveredObject = obj;
+          break;
+        }
+      }
+    }
+
+    // If hovering over a selected object, check for transform handles first
+    if (
+      hoveredObject &&
+      selectedObjects.includes(hoveredObject.id) &&
+      !isTransforming &&
+      canvas
+    ) {
+      const ARTBOARD_WIDTH = 6 * 300; // 1800px (6 inches)
+      const ARTBOARD_HEIGHT = 4 * 300; // 1200px (4 inches)
+      const topBarHeight = 40;
+      const availableHeight = canvas.height - topBarHeight;
+
+      const artboardX = (canvas.width - ARTBOARD_WIDTH) / 2;
+      const artboardY = topBarHeight + (availableHeight - ARTBOARD_HEIGHT) / 2;
+
+      const effectiveZoom = zoom * defaultViewScale;
+      const artboardMouseX = (mousePosition.x - artboardX) / effectiveZoom;
+      const artboardMouseY = (mousePosition.y - artboardY) / effectiveZoom;
+
+      const objX = hoveredObject.x * documentDpi;
+      const objY = hoveredObject.y * documentDpi;
+      const objWidth = hoveredObject.width * documentDpi;
+      const objHeight = hoveredObject.height * documentDpi;
+
+      const hoveredHandle = getTransformHandleAt(
+        artboardMouseX,
+        artboardMouseY,
+        objX,
+        objY,
+        objWidth,
+        objHeight,
+        1
+      );
+      if (hoveredHandle) {
+        switch (hoveredHandle) {
+          case 'nw':
+          case 'se':
+            return 'nw-resize';
+          case 'ne':
+          case 'sw':
+            return 'ne-resize';
+          case 'n':
+          case 's':
+            return 'ns-resize';
+          case 'w':
+          case 'e':
+            return 'ew-resize';
+          case 'rotate':
+            return 'crosshair';
+          default:
+            return 'default';
+        }
+      }
+    }
+
+    // If hovering over any object, show move cursor
+    if (hoveredObject) {
+      return 'move';
+    }
+
+    // Check if hovering over empty artboard space (not over an object)
+    if (canvas && !hoveredObject) {
+      const ARTBOARD_WIDTH = 6 * 300; // 1800px (6 inches)
+      const ARTBOARD_HEIGHT = 4 * 300; // 1200px (4 inches)
+      const canvasCenterX = canvas.width / 2;
+      const canvasCenterY = canvas.height / 2;
+
+      // Get current pan and zoom
+      const currentZoom = useEditorStore.getState().zoom;
+      const currentPan = useEditorStore.getState();
+      const effectiveZoom = currentZoom * defaultViewScale;
+
+      // Calculate artboard position accounting for pan
+      const artboardX = canvasCenterX - ARTBOARD_WIDTH / 2 + currentPan.panX;
+      const artboardY = canvasCenterY - ARTBOARD_HEIGHT / 2 + currentPan.panY;
+
+      // Convert mouse position to artboard space to check if within bounds
+      const artboardMouseX = (mousePosition.x - artboardX) / effectiveZoom;
+      const artboardMouseY = (mousePosition.y - artboardY) / effectiveZoom;
+
+      // Check if hovering within artboard bounds
+      const isOverArtboard =
+        artboardMouseX >= 0 &&
+        artboardMouseX <= ARTBOARD_WIDTH &&
+        artboardMouseY >= 0 &&
+        artboardMouseY <= ARTBOARD_HEIGHT;
+
+      // Show grab cursor on empty artboard space (indicates you can pan)
+      if (isOverArtboard) {
+        return 'grab';
+      }
+    }
+
+    // Shape tools get crosshair cursor for better UX
+    if (
+      [
+        'rectangle',
+        'circle',
+        'triangle',
+        'arrow',
+        'star',
+        'line',
+        'polygon',
+        'heart',
+        'gear',
+        'callout',
+      ].includes(activeTool)
+    ) {
+      return 'crosshair';
+    }
+
+    switch (activeTool) {
+      case 'move':
+        return 'move';
+      case 'brush':
+        return 'crosshair';
+      case 'text':
+        return 'text';
+      case 'crop':
+        return 'crosshair';
+      default:
+        return 'grab';
+    }
+  };
+
+  if (!isClient) {
+    return (
+      <div className="editor-canvas canvas-center-area relative flex items-center justify-center bg-white min-h-full">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+          </div>
+          <p className="text-sm text-gray-600">Loading Canvas...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="editor-canvas canvas-center-area relative flex items-center justify-center bg-white w-full h-full overflow-hidden"
+    >
+      {/* Floating Toolbar - wrapped in pointer-events container */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 1000,
+        }}
+        onClick={(e) => {
+          console.log(
+            '⚠️ FloatingToolbar container clicked - this should not block canvas'
+          );
+          e.stopPropagation();
+        }}
+      >
+        <FloatingToolbar />
+      </div>
+
+      {/* Canvas - Now takes full available space */}
+      <canvas
+        ref={(node) => {
+          const prevNode = canvasRef.current;
+          canvasRef.current = node;
+          // Only log on initial mount or when node changes
+          if (node && node !== prevNode) {
+            console.log('🎨 Canvas element mounted', {
+              width: node.width,
+              height: node.height,
+              offsetWidth: node.offsetWidth,
+              offsetHeight: node.offsetHeight,
+              hasMouseDown: !!handleMouseDown,
+              hasMouseMove: !!handleMouseMove,
+              pointerEvents: needsColorModeConversion ? 'none' : 'auto',
+            });
+
+            // Test if events work - native click listener
+            const testHandler = (e: MouseEvent) => {
+              console.log(
+                '✅ Native canvas click detected',
+                e.clientX,
+                e.clientY
+              );
+            };
+            node.addEventListener('click', testHandler, { once: true });
+            node.addEventListener(
+              'mousedown',
+              (e) => {
+                console.log(
+                  '✅ Native mousedown detected',
+                  e.clientX,
+                  e.clientY
+                );
+              },
+              { once: true }
+            );
+          }
+        }}
+        width={canvasSize.width}
+        height={canvasSize.height}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('⚡ React onMouseDown fired', {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            button: e.button,
+            buttons: e.buttons,
+            target: e.target,
+            currentTarget: e.currentTarget,
+          });
+          handleMouseDown(e);
+        }}
+        onClick={(e) => {
+          console.log(
+            '🔴 React onClick fired (after mousedown)',
+            e.clientX,
+            e.clientY
+          );
+        }}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onWheel={handleWheelCapture}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className={`absolute inset-0 transition-all duration-300 ${
+          needsColorModeConversion ? 'blur-sm pointer-events-none' : ''
+        }`}
+        style={{
+          width: '100%',
+          height: '100%',
+          cursor: getCursorStyle(),
+          pointerEvents: needsColorModeConversion ? 'none' : 'auto',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          MozUserSelect: 'none',
+          msUserSelect: 'none',
+          touchAction: 'none',
+        }}
+      />
+
+      {/* Color Mode Conversion Card */}
+      {needsColorModeConversion && (
+        <ColorModeConversionCard
+          currentMode={projectColorMode}
+          targetMode={targetColorMode || 'rgb'}
+          currentColorCount={objects.length}
+          selectedObjectsCount={selectedObjects.length}
+          onConvert={() => convertProjectToColorMode(targetColorMode || 'rgb')}
+          onCancel={() => {
+            // Reset the conversion flag
+            useEditorStore.setState({
+              needsColorModeConversion: false,
+              targetColorMode: null,
+            });
+          }}
+        />
+      )}
+    </div>
+  );
+}
