@@ -28,8 +28,12 @@ router.post('/:designId/collaborators', async (req, res) => {
 router.get('/:designId/collaborators', async (req, res) => {
   try {
     const collaborators = await collaborationService.getCollaborators(req.params.designId);
-    res.json({ success: true, collaborators });
-  } catch (error) {
+    res.json({ success: true, collaborators: collaborators || [] });
+  } catch (error: any) {
+    // If design doesn't exist, return empty array instead of error
+    if (error.code === '23503' || error.message?.includes('foreign key')) {
+      return res.json({ success: true, collaborators: [] });
+    }
     console.error('Get collaborators error:', error);
     res.status(500).json({ success: false, error: 'Failed to get collaborators' });
   }
@@ -78,8 +82,12 @@ router.post('/:designId/comments', async (req, res) => {
 router.get('/:designId/comments', async (req, res) => {
   try {
     const comments = await collaborationService.getComments(req.params.designId);
-    res.json({ success: true, comments });
-  } catch (error) {
+    res.json({ success: true, comments: comments || [] });
+  } catch (error: any) {
+    // If design doesn't exist, return empty array instead of error
+    if (error.code === '23503' || error.message?.includes('foreign key')) {
+      return res.json({ success: true, comments: [] });
+    }
     console.error('Get comments error:', error);
     res.status(500).json({ success: false, error: 'Failed to get comments' });
   }
@@ -138,8 +146,12 @@ router.post('/:designId/versions', async (req, res) => {
 router.get('/:designId/versions', async (req, res) => {
   try {
     const versions = await collaborationService.getVersions(req.params.designId);
-    res.json({ success: true, versions });
-  } catch (error) {
+    res.json({ success: true, versions: versions || [] });
+  } catch (error: any) {
+    // If design doesn't exist, return empty array instead of error
+    if (error.code === '23503' || error.message?.includes('foreign key')) {
+      return res.json({ success: true, versions: [] });
+    }
     console.error('Get versions error:', error);
     res.status(500).json({ success: false, error: 'Failed to get versions' });
   }

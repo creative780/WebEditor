@@ -29,7 +29,10 @@ export function drawObjects(
   const objects = useEditorStore.getState().objects;
   const selection = useEditorStore.getState().selection;
 
-  objects.forEach((obj) => {
+  // Filter out invisible objects (default to visible if undefined)
+  const visibleObjects = objects.filter(obj => obj.visible !== false);
+
+  visibleObjects.forEach((obj) => {
     ctx.save();
 
     // Convert document units to pixels - objects are now in artboard coordinate space

@@ -78,6 +78,7 @@ export function EditorCanvas() {
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
   const [hoveredEdgeSegment, setHoveredEdgeSegment] =
     useState<EdgeSegment | null>(null);
+  const [hoveredObjectType, setHoveredObjectType] = useState<string | null>(null);
 
   // Marquee selection state
   const [isMarqueeSelecting, setIsMarqueeSelecting] = useState(false);
@@ -115,6 +116,9 @@ export function EditorCanvas() {
 
   // Performance optimization - track if render is needed for live updates
   const [needsRender, setNeedsRender] = useState(true);
+  
+  // Store render callback in ref to avoid infinite loops
+  const renderCanvasCallbackRef = useRef<() => void>(() => {});
 
   // Subscribe to store changes for live updates
   useEffect(() => {
@@ -237,6 +241,26 @@ export function EditorCanvas() {
       (state) => state.selection,
       () => {
         setNeedsRender(true); // Trigger render when selection changes
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to canvas background changes to trigger re-render
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe(
+      (state) => state.canvasBackground,
+      (newBackground) => {
+        // Invalidate cache when background changes
+        viewportCacheRef.current.imageData = null;
+        // Reset cache background properties to force mismatch
+        viewportCacheRef.current.backgroundType = '';
+        viewportCacheRef.current.backgroundColor = '';
+        viewportCacheRef.current.backgroundOpacity = -1;
+        viewportCacheRef.current.backgroundGridSize = -1;
+        // Trigger immediate render
+        setNeedsRender(true);
       }
     );
 
@@ -533,6 +557,7 @@ export function EditorCanvas() {
     isDraggingText,
     isTextDragMode,
     transformEdgeSegment,
+    setHoveredObjectType,
   });
 
   const { handleMouseUp } = useMouseUp({
@@ -559,6 +584,7 @@ export function EditorCanvas() {
     setHasMovedEnough,
     setCursorPosition,
     setMousePosition,
+    setHoveredObjectType,
   });
 
   const { handleWheelCapture } = useWheelEvents(zoom, defaultViewScale);
@@ -633,6 +659,11 @@ export function EditorCanvas() {
     isDraggingObject,
     setViewportCache,
   ]);
+
+  // Update ref whenever callback changes
+  useEffect(() => {
+    renderCanvasCallbackRef.current = renderCanvasCallback;
+  }, [renderCanvasCallback]);
 
   // Precise canvas area zoom - only in center area between bars (like Canva)
   useEffect(() => {
@@ -781,13 +812,31 @@ export function EditorCanvas() {
   }, []);
 
   // Render when client-side and when specific values change - optimized for live updates
+  // Use ref to avoid infinite loops from callback recreation
   useEffect(() => {
     if (isClient && needsRender) {
       // Render immediately for live updates
-      renderCanvasCallback();
+      renderCanvasCallbackRef.current();
       setNeedsRender(false); // Reset render flag
     }
-  }, [isClient, needsRender, renderCanvasCallback]);
+  }, [isClient, needsRender]);
+
+  // Real-time cursor position updates for ruler indicators
+  // Use a ref to track cursor position and render on every frame when it changes
+  const cursorPositionRef = useRef(cursorPosition);
+  const cursorRenderFrameRef = useRef<number | null>(null);
+  
+  useEffect(() => {
+    cursorPositionRef.current = cursorPosition;
+    
+    // Trigger render for cursor position updates
+    if (cursorRenderFrameRef.current === null && isClient) {
+      cursorRenderFrameRef.current = requestAnimationFrame(() => {
+        renderCanvasCallbackRef.current();
+        cursorRenderFrameRef.current = null;
+      });
+    }
+  }, [isClient, cursorPosition]);
 
   // Get cursor style using extracted utility function
   const isOverArtboard = mousePosition.x >= 0 && mousePosition.y >= 0; // Simplified check
@@ -799,26 +848,33 @@ export function EditorCanvas() {
     isDraggingObject,
     isTransforming,
     transformHandle,
-    transformEdgeSegment
+    transformEdgeSegment,
+    hoveredObjectType
   );
 
-  // Render canvas when needsRender flag is set (for zoom/pan/selection changes)
-  useEffect(() => {
-    if (isClient && needsRender) {
-      console.log(
-        '[RENDER EFFECT] needsRender triggered, calling renderCanvasCallback'
-      );
-      renderCanvasCallback();
-      setNeedsRender(false); // Reset flag after rendering
-    }
-  }, [isClient, needsRender, renderCanvasCallback]);
-
-  // Render canvas on mount and when dependencies change (for initial render and other changes)
+  // Render canvas on mount and when critical dependencies change
+  // Use ref to avoid infinite loops - cursorPosition updates handled separately above
   useEffect(() => {
     if (isClient) {
-      renderCanvasCallback();
+      renderCanvasCallbackRef.current();
     }
-  }, [isClient, renderCanvasCallback]);
+  }, [
+    isClient,
+    zoom,
+    documentDpi,
+    activeTool,
+    selectedObjects,
+    objects,
+    isTransforming,
+    transformHandle,
+    isMarqueeSelecting,
+    canvasBackground,
+    isDraggingArtboard,
+    isTextEditing,
+    editingTextId,
+    isDraggingObject,
+    // Note: cursorPosition is handled separately above for real-time ruler updates
+  ]);
 
   return (
     <div

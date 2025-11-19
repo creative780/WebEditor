@@ -49,9 +49,9 @@ export function useKeyboardShortcuts() {
               id: `text-${Date.now()}`,
               type: 'text' as const,
               text: 'Double-click to edit',
-              x: documentWidth / 2 - 1,
+              x: documentWidth / 2 - 0.6,
               y: documentHeight / 2 - 0.25,
-              width: 2,
+              width: 1.2, // Reduced width to enable wrapping after 10-15 words
               height: 0.5,
               rotation: 0,
               opacity: 1,

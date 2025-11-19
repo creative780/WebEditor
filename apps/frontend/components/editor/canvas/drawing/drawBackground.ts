@@ -96,7 +96,7 @@ function drawGridPattern(
 }
 
 /**
- * Draw dots pattern
+ * Draw dots pattern - optimized using createPattern for instant rendering
  */
 function drawDotsPattern(
   ctx: CanvasRenderingContext2D,
@@ -109,24 +109,35 @@ function drawDotsPattern(
   ctx.globalAlpha = background.opacity;
   ctx.fillRect(0, 0, width, height);
 
-  // Draw dots
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-  ctx.globalAlpha = 1;
-
   const gridSize = background.gridSize;
-  const dotSize = 2;
+  const dotSize = 3.5; // Increased from 2 for better visibility
 
-  for (let x = gridSize; x < width; x += gridSize) {
-    for (let y = gridSize; y < height; y += gridSize) {
-      ctx.beginPath();
-      ctx.arc(x, y, dotSize, 0, 2 * Math.PI);
-      ctx.fill();
+  // Create a small pattern tile instead of drawing millions of dots
+  const patternCanvas = document.createElement('canvas');
+  patternCanvas.width = gridSize;
+  patternCanvas.height = gridSize;
+  const patternCtx = patternCanvas.getContext('2d');
+  
+  if (patternCtx) {
+    // Draw single dot at bottom-right of pattern tile (matching original behavior)
+    // Original draws dots starting at (gridSize, gridSize), so dot is at tile edge
+    patternCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+    patternCtx.beginPath();
+    patternCtx.arc(gridSize, gridSize, dotSize, 0, 2 * Math.PI);
+    patternCtx.fill();
+
+    // Create repeating pattern from the tile
+    const pattern = ctx.createPattern(patternCanvas, 'repeat');
+    if (pattern) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, width, height);
     }
   }
 }
 
 /**
- * Draw checkerboard pattern
+ * Draw checkerboard pattern - optimized using createPattern for instant rendering
  */
 function drawCheckerboardPattern(
   ctx: CanvasRenderingContext2D,
@@ -138,13 +149,28 @@ function drawCheckerboardPattern(
   const lightColor = background.color;
   const darkColor = 'rgba(0, 0, 0, 0.05)';
 
-  ctx.globalAlpha = background.opacity;
+  // Create a small pattern tile (2x2 grid) instead of drawing millions of squares
+  const patternCanvas = document.createElement('canvas');
+  patternCanvas.width = gridSize * 2;
+  patternCanvas.height = gridSize * 2;
+  const patternCtx = patternCanvas.getContext('2d');
+  
+  if (patternCtx) {
+    // Draw checkerboard pattern in the tile
+    patternCtx.fillStyle = lightColor;
+    patternCtx.fillRect(0, 0, gridSize, gridSize);
+    patternCtx.fillRect(gridSize, gridSize, gridSize, gridSize);
+    
+    patternCtx.fillStyle = darkColor;
+    patternCtx.fillRect(gridSize, 0, gridSize, gridSize);
+    patternCtx.fillRect(0, gridSize, gridSize, gridSize);
 
-  for (let x = 0; x < width; x += gridSize) {
-    for (let y = 0; y < height; y += gridSize) {
-      const isEven = Math.floor(x / gridSize) + Math.floor(y / gridSize);
-      ctx.fillStyle = isEven % 2 === 0 ? lightColor : darkColor;
-      ctx.fillRect(x, y, gridSize, gridSize);
+    // Create repeating pattern from the tile
+    const pattern = ctx.createPattern(patternCanvas, 'repeat');
+    if (pattern) {
+      ctx.globalAlpha = background.opacity;
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, width, height);
     }
   }
 }

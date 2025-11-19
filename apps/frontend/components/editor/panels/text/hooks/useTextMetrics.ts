@@ -3,14 +3,15 @@ import { useEditorStore } from '../../../../../state/useEditorStore';
 import { TextObj } from '../../../../../state/useEditorStore';
 
 export function useTextMetrics(textObj: TextObj | undefined) {
-  const document = useEditorStore((state) => state.document);
+  const doc = useEditorStore((state) => state.document);
 
   const calculateTextHeight = useMemo(() => {
     if (!textObj) return () => 0.5;
 
     return (obj: TextObj): number => {
       // Create a temporary canvas to measure text
-      const canvas = document.createElement('canvas');
+      const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+      if (!canvas) return obj.height || 0.5;
       const ctx = canvas.getContext('2d');
       if (!ctx) return obj.height || 0.5;
 
@@ -91,12 +92,12 @@ export function useTextMetrics(textObj: TextObj | undefined) {
 
       // Calculate total height: lines * lineHeight + padding
       const contentHeight = totalLines * lineHeight;
-      const totalHeight = (contentHeight + padding.top + padding.bottom) / document.dpi;
+      const totalHeight = (contentHeight + padding.top + padding.bottom) / doc.dpi;
 
       // Minimum height
       return Math.max(0.3, totalHeight);
     };
-  }, [textObj, document]);
+  }, [textObj, doc]);
 
   return { calculateTextHeight };
 }

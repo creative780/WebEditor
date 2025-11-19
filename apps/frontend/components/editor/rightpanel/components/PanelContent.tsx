@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { PanelTab } from './PanelTabs';
 import { PrintQualityPanel } from '../../panels/PrintQualityPanel';
 import { TemplatesPanel } from '../../panels/TemplatesPanel';
@@ -16,6 +17,8 @@ import { LayerTemplates } from '../../panels/LayerTemplates';
 import { ExportPanel } from '../../panels/ExportPanel';
 import { CollaborationPanel } from '../../panels/CollaborationPanel';
 
+const DESIGN_ID_KEY = 'editor_design_id';
+
 interface PanelContentProps {
   activeTab: PanelTab;
   gradient: GradientConfig;
@@ -29,6 +32,34 @@ export function PanelContent({
   onGradientChange,
   onColorSelect,
 }: PanelContentProps) {
+  const [designId, setDesignId] = useState<string | null>(null);
+
+  // Load designId from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const loadDesignId = () => {
+      const savedDesignId = localStorage.getItem(DESIGN_ID_KEY);
+      setDesignId(savedDesignId || 'local-design');
+    };
+
+    loadDesignId();
+    
+    // Listen for changes to designId in localStorage
+    const handleStorageChange = () => {
+      loadDesignId();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    // Also check periodically in case same-tab updates occur
+    const interval = setInterval(loadDesignId, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'quality':
@@ -74,7 +105,7 @@ export function PanelContent({
       case 'export':
         return <ExportPanel />;
       case 'collaboration':
-        return <CollaborationPanel />;
+        return <CollaborationPanel designId={designId || 'local-design'} />;
       default:
         return null;
     }

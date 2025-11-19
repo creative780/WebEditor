@@ -1,18 +1,20 @@
 """
 URL configuration for web-to-print backend.
 """
-
 from django.contrib import admin
 from django.urls import path, include
-from django.conf import settings
-from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('app.health.urls')),
+    path('', include('app.health.urls')),
+    path('', include('app.designs.urls')),
+    path('', include('app.collaboration.urls')),
+    path('', include('app.design_templates.urls')),
+    path('', include('app.exports.urls')),
+    path('', include('app.shape_operations.urls')),
+    path('', include('app.text.urls')),
+    path('', include('app.colors.urls')),
+    path('', include('app.layers.urls')),
+    path('', include('app.monitoring.urls')),
+    path('', include('app.analytics.urls')),
 ]
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-

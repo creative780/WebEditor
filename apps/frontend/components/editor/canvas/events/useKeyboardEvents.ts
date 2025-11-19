@@ -2,7 +2,7 @@
  * Keyboard event handlers for text editing
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useEditorStore } from '../../../../state/useEditorStore';
 
 export interface KeyboardEventsParams {
@@ -85,6 +85,16 @@ export function useKeyboardEvents(params: KeyboardEventsParams) {
     },
     [isTextEditing, editingTextId, setIsTextEditing, setEditingTextId]
   );
+
+  // Attach keyboard event listener when editing text
+  useEffect(() => {
+    if (isTextEditing) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [isTextEditing, handleKeyDown]);
 
   return { handleKeyDown };
 }

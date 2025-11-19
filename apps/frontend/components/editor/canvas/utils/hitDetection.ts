@@ -1,8 +1,10 @@
 /**
  * Hit detection utilities for transform handles and object interactions
+ * OPTIMIZED: Uses caching and early exits for better performance
  */
 
 import {
+  getAllHandleMetrics,
   getHandleHitRadius,
   getHandleLineWidth,
   getHoverHandleRadius,
@@ -12,6 +14,10 @@ import {
   getSelectionStrokePadding,
   getTextExtraPadding,
 } from './handleMetrics';
+import {
+  getCachedHandlePositions,
+  getCachedPadding,
+} from './handleCache';
 
 export type TransformHandle =
   | 'nw'
@@ -27,11 +33,27 @@ export type TransformHandle =
 
 /**
  * Compute padding around an object based on its type, stroke, and zoom
+ * OPTIMIZED: Uses caching to avoid redundant calculations
  */
 export function calculateSelectionPadding(
   obj: any,
-  zoom: number
+  zoom: number,
+  objectId?: string
 ): { paddingX: number; paddingY: number } {
+  // Use cache if objectId is provided
+  if (objectId) {
+    const metrics = getAllHandleMetrics(zoom);
+    return getCachedPadding(
+      objectId,
+      obj,
+      zoom,
+      metrics.selectionBasePadding,
+      metrics.selectionStrokePadding,
+      metrics.textExtraPadding
+    );
+  }
+
+  // Fallback to direct calculation (backward compatibility)
   const basePadding = getSelectionBasePadding(zoom);
 
   if (obj.type === 'text') {
@@ -46,9 +68,36 @@ export function calculateSelectionPadding(
 }
 
 /**
+ * Quick bounding box check - early exit if point is clearly outside
+ */
+function isPointInBounds(
+  x: number,
+  y: number,
+  objX: number,
+  objY: number,
+  objWidth: number,
+  objHeight: number,
+  paddingX: number,
+  paddingY: number,
+  maxDetectionRadius: number
+): boolean {
+  const paddedX = objX - paddingX;
+  const paddedY = objY - paddingY;
+  const paddedWidth = objWidth + paddingX * 2;
+  const paddedHeight = objHeight + paddingY * 2;
+
+  // Expand bounds by max detection radius for early exit
+  const minX = paddedX - maxDetectionRadius;
+  const maxX = paddedX + paddedWidth + maxDetectionRadius;
+  const minY = paddedY - maxDetectionRadius * 2; // Extra space for rotation handle
+  const maxY = paddedY + paddedHeight + maxDetectionRadius;
+
+  return x >= minX && x <= maxX && y >= minY && y <= maxY;
+}
+
+/**
  * Determine which transform handle (if any) is under the cursor.
- * Updated for precise handle hit detection — cursor changes only when hovering
- * directly over visible handles.
+ * OPTIMIZED: Uses caching, early exits, and batched metrics
  */
 export function getTransformHandleAt(
   x: number,
@@ -59,42 +108,113 @@ export function getTransformHandleAt(
   objHeight: number,
   zoom: number,
   paddingX = 0,
-  paddingY = 0
+  paddingY = 0,
+  objectId?: string
 ): TransformHandle {
-  const lineWidth = getHandleLineWidth(zoom);
-  const hoverHandleRadius = getHoverHandleRadius(zoom);
-  const handleDetectionRadius = hoverHandleRadius + lineWidth * 1.25;
+  // Get all metrics at once (cached)
+  const metrics = getAllHandleMetrics(zoom);
+  const handleDetectionRadius = metrics.hoverHandleRadius + metrics.handleLineWidth * 1.25;
+  const maxDetectionRadius = Math.max(
+    handleDetectionRadius,
+    metrics.rotationHandleRadiusHovered + metrics.handleLineWidth * 1.25
+  );
+
+  // Early exit: quick bounding box check
+  if (
+    !isPointInBounds(
+      x,
+      y,
+      objX,
+      objY,
+      objWidth,
+      objHeight,
+      paddingX,
+      paddingY,
+      maxDetectionRadius
+    )
+  ) {
+    return null;
+  }
+
   const paddedX = objX - paddingX;
   const paddedY = objY - paddingY;
   const paddedWidth = objWidth + paddingX * 2;
   const paddedHeight = objHeight + paddingY * 2;
 
-  // Rotation handle (above top center)
-  const rotationOffset = getRotationHandleOffset(zoom);
+  // Check rotation handle first (most common interaction, positioned outside bounds)
   const rotationCenterX = paddedX + paddedWidth / 2;
-  const rotationCenterY = paddedY - rotationOffset;
+  const rotationCenterY = paddedY - metrics.rotationHandleOffset;
   const rotationDetectionRadius =
-    getRotationHandleRadius(zoom, true) + lineWidth * 1.25;
+    metrics.rotationHandleRadiusHovered + metrics.handleLineWidth * 1.25;
 
   const distToRotation = Math.hypot(x - rotationCenterX, y - rotationCenterY);
   if (distToRotation <= rotationDetectionRadius) {
     return 'rotate';
   }
 
-  // Define corner and side handle coordinates
-  const handles = {
-    nw: { x: paddedX, y: paddedY },
-    n: { x: paddedX + paddedWidth / 2, y: paddedY },
-    ne: { x: paddedX + paddedWidth, y: paddedY },
-    e: { x: paddedX + paddedWidth, y: paddedY + paddedHeight / 2 },
-    se: { x: paddedX + paddedWidth, y: paddedY + paddedHeight },
-    s: { x: paddedX + paddedWidth / 2, y: paddedY + paddedHeight },
-    sw: { x: paddedX, y: paddedY + paddedHeight },
-    w: { x: paddedX, y: paddedY + paddedHeight / 2 },
-  };
+  // Use cached handle positions if objectId provided
+  let handles: Record<string, { x: number; y: number }>;
+  
+  if (objectId) {
+    const cachedPositions = getCachedHandlePositions(
+      objectId,
+      objX,
+      objY,
+      objWidth,
+      objHeight,
+      zoom,
+      paddingX,
+      paddingY,
+      metrics.rotationHandleOffset
+    );
+    handles = {
+      nw: cachedPositions.nw,
+      n: cachedPositions.n,
+      ne: cachedPositions.ne,
+      e: cachedPositions.e,
+      se: cachedPositions.se,
+      s: cachedPositions.s,
+      sw: cachedPositions.sw,
+      w: cachedPositions.w,
+    };
+  } else {
+    // Fallback to direct calculation
+    handles = {
+      nw: { x: paddedX, y: paddedY },
+      n: { x: paddedX + paddedWidth / 2, y: paddedY },
+      ne: { x: paddedX + paddedWidth, y: paddedY },
+      e: { x: paddedX + paddedWidth, y: paddedY + paddedHeight / 2 },
+      se: { x: paddedX + paddedWidth, y: paddedY + paddedHeight },
+      s: { x: paddedX + paddedWidth / 2, y: paddedY + paddedHeight },
+      sw: { x: paddedX, y: paddedY + paddedHeight },
+      w: { x: paddedX, y: paddedY + paddedHeight / 2 },
+    };
+  }
 
-  // Strict hit detection: only detect if within visible handle radius
-  for (const [handle, pos] of Object.entries(handles)) {
+  // Check corner handles first (more precise, smaller hit area)
+  const cornerHandles: Array<[string, { x: number; y: number }]> = [
+    ['nw', handles.nw],
+    ['ne', handles.ne],
+    ['se', handles.se],
+    ['sw', handles.sw],
+  ];
+
+  for (const [handle, pos] of cornerHandles) {
+    const distance = Math.hypot(x - pos.x, y - pos.y);
+    if (distance <= handleDetectionRadius) {
+      return handle as TransformHandle;
+    }
+  }
+
+  // Then check edge handles
+  const edgeHandles: Array<[string, { x: number; y: number }]> = [
+    ['n', handles.n],
+    ['e', handles.e],
+    ['s', handles.s],
+    ['w', handles.w],
+  ];
+
+  for (const [handle, pos] of edgeHandles) {
     const distance = Math.hypot(x - pos.x, y - pos.y);
     if (distance <= handleDetectionRadius) {
       return handle as TransformHandle;
@@ -102,11 +222,10 @@ export function getTransformHandleAt(
   }
 
   // Border hit detection: allow resizing when dragging along selection edges
-  const handleHitRadius = getHandleHitRadius(zoom);
   const borderHitRadius = Math.max(
-    handleHitRadius * 0.85,
-    hoverHandleRadius * 0.7,
-    lineWidth * 5
+    metrics.handleHitRadius * 0.85,
+    metrics.hoverHandleRadius * 0.7,
+    metrics.handleLineWidth * 5
   );
 
   const withinHorizontalBand =

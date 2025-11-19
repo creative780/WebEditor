@@ -12,6 +12,7 @@ import {
   getTransformHandleAt,
 } from '../utils/hitDetection';
 import { convertMouseToArtboard, isPointInArtboard } from '../utils/mouseUtils';
+import { updateObjectBounds, hasObjectBoundsChanged } from '../utils/handleCache';
 
 export interface MouseEventsParams {
   // Canvas refs
@@ -187,16 +188,20 @@ export function useMouseEvents(params: MouseEventsParams) {
           const objWidth = selectedObj.width * documentDpi;
           const objHeight = selectedObj.height * documentDpi;
 
-          // Check rotation handle
+          // Update bounds cache if changed
+          const bounds = { x: objX, y: objY, width: objWidth, height: objHeight };
+          if (hasObjectBoundsChanged(selectedObj.id, bounds)) {
+            updateObjectBounds(selectedObj.id, bounds);
+          }
+
+          // Use cached padding calculation
           const { paddingX, paddingY } = calculateSelectionPadding(
             selectedObj,
-            effectiveZoom
+            effectiveZoom,
+            selectedObj.id
           );
-          const paddedX = objX - paddingX;
-          const paddedY = objY - paddingY;
-          const paddedWidth = objWidth + paddingX * 2;
-          const baseHandleSize = Math.max(10, 12 / effectiveZoom);
-          const rotationOffset = baseHandleSize * 2.4;
+
+          // Use cached handle detection
           const handleUnderPointer = getTransformHandleAt(
             artboardMouseX,
             artboardMouseY,
@@ -206,10 +211,15 @@ export function useMouseEvents(params: MouseEventsParams) {
             objHeight,
             effectiveZoom,
             paddingX,
-            paddingY
+            paddingY,
+            selectedObj.id
           );
 
           if (handleUnderPointer) {
+            // Don't allow transforming locked objects
+            if (selectedObj.locked === true) {
+              return;
+            }
             setIsTransforming(true);
             setTransformHandle(handleUnderPointer);
             setTransformEdgeSegment(null);
@@ -251,11 +261,21 @@ export function useMouseEvents(params: MouseEventsParams) {
         const objY = clickedObject.y * documentDpi;
         const objWidth = clickedObject.width * documentDpi;
         const objHeight = clickedObject.height * documentDpi;
+
+        // Update bounds cache if changed
+        const bounds = { x: objX, y: objY, width: objWidth, height: objHeight };
+        if (hasObjectBoundsChanged(clickedObject.id, bounds)) {
+          updateObjectBounds(clickedObject.id, bounds);
+        }
+
+        // Use cached padding calculation
         const { paddingX, paddingY } = calculateSelectionPadding(
           clickedObject,
-          effectiveZoom
+          effectiveZoom,
+          clickedObject.id
         );
 
+        // Use cached handle detection
         const clickedHandle = getTransformHandleAt(
           artboardMouseX,
           artboardMouseY,
@@ -265,21 +285,26 @@ export function useMouseEvents(params: MouseEventsParams) {
           objHeight,
           effectiveZoom,
           paddingX,
-          paddingY
+          paddingY,
+          clickedObject.id
         );
 
-        // Handle text editing
+        // Handle text editing - allow single click to start/switch editing (always, even if already selected)
         if (clickedObject.type === 'text' && !clickedHandle) {
-          const isAlreadySelected = store.selection.includes(clickedObject.id);
-          if (isAlreadySelected || e.detail === 2) {
-            setIsTextEditing(true);
-            setEditingTextId(clickedObject.id);
-            store.selectObject(clickedObject.id);
-            setIsMouseDown(false);
-            isMouseDownRef.current = false;
-            setNeedsRender(true);
-            return;
-          }
+          // Always enter edit mode when clicking on text object (not on handles)
+          // This works for:
+          // - Clicking on a text object that's not currently being edited
+          // - Clicking on a text object that's already being edited (refocus)
+          // - Clicking on a different text object while one is being edited (switch focus)
+          setIsTextEditing(true);
+          setEditingTextId(clickedObject.id);
+          store.selectObject(clickedObject.id);
+          setIsMouseDown(false);
+          isMouseDownRef.current = false;
+          setNeedsRender(true);
+          e.preventDefault();
+          e.stopPropagation();
+          return;
         }
 
         // Single click to select
@@ -287,17 +312,24 @@ export function useMouseEvents(params: MouseEventsParams) {
         setNeedsRender(true);
 
         if (!clickedHandle) {
-          setDragStart({ x: e.clientX, y: e.clientY });
-          setDragOffset({
-            x: documentX - clickedObject.x,
-            y: documentY - clickedObject.y,
-          });
-          setInitialMousePos({ x: e.clientX, y: e.clientY });
-          setIsMouseDown(true);
-          setHasMovedEnough(false);
-          setIsDraggingArtboard(false);
-          setIsPanning(false);
+          // Don't set up drag for locked objects or text objects (text objects should enter edit mode instead)
+          if (clickedObject.locked !== true && clickedObject.type !== 'text') {
+            setDragStart({ x: e.clientX, y: e.clientY });
+            setDragOffset({
+              x: documentX - clickedObject.x,
+              y: documentY - clickedObject.y,
+            });
+            setInitialMousePos({ x: e.clientX, y: e.clientY });
+            setIsMouseDown(true);
+            setHasMovedEnough(false);
+            setIsDraggingArtboard(false);
+            setIsPanning(false);
+          }
         } else {
+          // Don't allow transforming locked objects
+          if (clickedObject.locked === true) {
+            return;
+          }
           setIsTransforming(true);
           setTransformHandle(clickedHandle);
           setTransformStart({ x: artboardMouseX, y: artboardMouseY });
@@ -379,7 +411,7 @@ export function useMouseEvents(params: MouseEventsParams) {
           text: 'Type here...',
           x: documentX,
           y: documentY,
-          width: 2,
+          width: 1.2, // Reduced width to enable wrapping after 10-15 words
           height: 1,
           rotation: 0,
           opacity: 1,
@@ -402,6 +434,7 @@ export function useMouseEvents(params: MouseEventsParams) {
           textShadow: 'none',
           textStroke: 'none',
           textStrokeWidth: 0,
+          wrapMode: 'area' as 'path' | 'none' | 'area', // Enable text wrapping
         };
 
         store.addObject(newText);
@@ -412,15 +445,24 @@ export function useMouseEvents(params: MouseEventsParams) {
         return;
       }
 
-      // Artboard dragging logic
-      // Disabled middle mouse button panning - user wants mouse wheel scrolling instead
+      // Exit text editing mode when clicking on empty space (not on any object)
+      if (!clickedObject) {
+        setIsTextEditing(false);
+        setEditingTextId(null);
+      }
+
+      // Artboard dragging logic (panning the canvas)
+      // Allow panning by holding left mouse button anywhere on canvas when no object is clicked
       const isAltMode = e.altKey && !clickedObject;
+      // Panning works anywhere on canvas when clicking empty space (not just on artboard)
       const isLeftClickOnEmptySpace =
         e.button === 0 &&
         !clickedObject &&
-        isOverArtboard &&
         activeTool !== 'text';
 
+      // Start artboard dragging (panning) when:
+      // 1. Alt key is pressed, OR
+      // 2. Left click on empty space (anywhere on canvas, not just artboard)
       const shouldStartArtboardDrag =
         (isLeftClickOnEmptySpace || isAltMode) &&
         !clickedObject;
@@ -437,7 +479,8 @@ export function useMouseEvents(params: MouseEventsParams) {
         return;
       }
 
-      // Start marquee selection
+      // Start marquee selection (only when over artboard and not starting artboard drag)
+      // Note: This won't run if shouldStartArtboardDrag is true, so panning takes priority
       if (
         activeTool !== 'text' &&
         !clickedObject &&
@@ -455,7 +498,7 @@ export function useMouseEvents(params: MouseEventsParams) {
         return;
       }
 
-      // Start panning
+      // Start panning (fallback for any other case)
       if (!clickedObject && !isMarqueeSelecting && !isDraggingArtboard) {
         setIsPanning(true);
         setLastPanPoint({ x: e.clientX, y: e.clientY });

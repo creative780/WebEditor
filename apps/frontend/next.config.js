@@ -10,6 +10,16 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },
+  // Rewrite API calls to Django backend (port 8000) or Express backend (port 3001)
+  // Change this to point to Django: 'http://localhost:8000'
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/:path*',
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {

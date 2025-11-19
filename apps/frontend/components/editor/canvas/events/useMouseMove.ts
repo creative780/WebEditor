@@ -1,9 +1,10 @@
 /**
  * Mouse move event handler
  * Handles: dragging, transforming, panning, marquee selection, hover detection
+ * OPTIMIZED: Throttled hover detection, cached calculations
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useEditorStore } from '../../../../state/useEditorStore';
 import type { ShapeObj } from '../../../../state/useEditorStore';
 import { type EdgeSegment } from '../../../../lib/shapePathUtils';
@@ -14,6 +15,7 @@ import {
 } from '../utils/hitDetection';
 import { convertMouseToArtboard } from '../utils/mouseUtils';
 import type { MouseEventsParams } from './useMouseEvents';
+import { updateObjectBounds, hasObjectBoundsChanged } from '../utils/handleCache';
 
 const DRAG_THRESHOLD = 5; // pixels
 const WORKSPACE_SIZE = 100000;
@@ -21,6 +23,9 @@ const LEFT_PANEL_WIDTH = 80;
 const RULER_SIZE = 40;
 const WORKSPACE_GUTTER = 200;
 const BOTTOM_GUTTER = 20;
+
+// Throttle hover detection to 60fps (16ms)
+const HOVER_THROTTLE_MS = 16;
 
 function getPivotForEdgeSegment(
   shape: ShapeObj,
@@ -108,6 +113,7 @@ export function useMouseMove(params: MouseEventsParams & {
   isDraggingText: boolean;
   isTextDragMode: boolean;
   transformEdgeSegment: EdgeSegment | null;
+  setHoveredObjectType: (type: string | null) => void;
 }) {
   const {
     canvasRef,
@@ -158,7 +164,13 @@ export function useMouseMove(params: MouseEventsParams & {
     setMousePosition,
     isDraggingText,
     isTextDragMode,
+    setHoveredObjectType,
   } = params;
+
+  // Throttle hover detection
+  const hoverThrottleRef = useRef<number | null>(null);
+  const lastHoverCheckRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastHoverResultRef = useRef<string | null>(null);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -193,51 +205,118 @@ export function useMouseMove(params: MouseEventsParams & {
       setCursorPosition(newCursorPosition);
       setMousePosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
 
-      // Get fresh selection from store
+      // Get fresh selection from store (cache at start of handler)
       const currentSelection = storeState.selection;
 
-      // Check for handle/edge hover
-      if (!isTransforming && !isDraggingObject && currentSelection.length > 0) {
-        const selectedObj = storeState.objects.find(
-          (obj) => obj.id === currentSelection[0]
-        );
-        if (selectedObj) {
-          const objX = selectedObj.x * documentDpi;
-          const objY = selectedObj.y * documentDpi;
-          const objWidth = selectedObj.width * documentDpi;
-          const objHeight = selectedObj.height * documentDpi;
+      // OPTIMIZED: Throttled hover detection
+      const performHoverCheck = () => {
+        // First, check for any object under the cursor (for text cursor detection)
+        const objects = storeState.objects;
+        const reversedObjects = [...objects].reverse();
+        const hoveredObject = reversedObjects.find((obj) => {
+          const objX = obj.x * documentDpi;
+          const objY = obj.y * documentDpi;
+          const objWidth = obj.width * documentDpi;
+          const objHeight = obj.height * documentDpi;
 
-          const { paddingX, paddingY } = calculateSelectionPadding(
-            selectedObj,
-            effectiveZoom
+          return (
+            artboardMouseX >= objX &&
+            artboardMouseX <= objX + objWidth &&
+            artboardMouseY >= objY &&
+            artboardMouseY <= objY + objHeight
           );
+        });
 
-          const handleUnderPointer = getTransformHandleAt(
-            artboardMouseX,
-            artboardMouseY,
-            objX,
-            objY,
-            objWidth,
-            objHeight,
-            effectiveZoom,
-            paddingX,
-            paddingY
+        // Update hovered object type (for cursor styling)
+        if (hoveredObject && hoveredObject.type === 'text') {
+          setHoveredObjectType('text');
+        } else {
+          setHoveredObjectType(null);
+        }
+
+        // Then check for transform handles on selected objects
+        if (!isTransforming && !isDraggingObject && currentSelection.length > 0) {
+          const selectedObj = storeState.objects.find(
+            (obj) => obj.id === currentSelection[0]
           );
+          if (selectedObj) {
+            const objX = selectedObj.x * documentDpi;
+            const objY = selectedObj.y * documentDpi;
+            const objWidth = selectedObj.width * documentDpi;
+            const objHeight = selectedObj.height * documentDpi;
 
-          if (handleUnderPointer) {
-            setHoveredHandle(handleUnderPointer);
-            setHoveredEdgeSegment(null);
+            // Update bounds cache if changed
+            const bounds = { x: objX, y: objY, width: objWidth, height: objHeight };
+            if (hasObjectBoundsChanged(selectedObj.id, bounds)) {
+              updateObjectBounds(selectedObj.id, bounds);
+            }
+
+            // Use cached padding calculation
+            const { paddingX, paddingY } = calculateSelectionPadding(
+              selectedObj,
+              effectiveZoom,
+              selectedObj.id
+            );
+
+            // Use cached handle detection
+            const handleUnderPointer = getTransformHandleAt(
+              artboardMouseX,
+              artboardMouseY,
+              objX,
+              objY,
+              objWidth,
+              objHeight,
+              effectiveZoom,
+              paddingX,
+              paddingY,
+              selectedObj.id
+            );
+
+            // Only update state if result changed
+            if (handleUnderPointer !== lastHoverResultRef.current) {
+              lastHoverResultRef.current = handleUnderPointer;
+              if (handleUnderPointer) {
+                setHoveredHandle(handleUnderPointer);
+                setHoveredEdgeSegment(null);
+              } else {
+                setHoveredHandle(null);
+                setHoveredEdgeSegment(null);
+              }
+            }
           } else {
+            if (lastHoverResultRef.current !== null) {
+              lastHoverResultRef.current = null;
+              setHoveredHandle(null);
+              setHoveredEdgeSegment(null);
+            }
+          }
+        } else {
+          if (lastHoverResultRef.current !== null) {
+            lastHoverResultRef.current = null;
             setHoveredHandle(null);
             setHoveredEdgeSegment(null);
           }
-        } else {
-          setHoveredHandle(null);
-          setHoveredEdgeSegment(null);
         }
-      } else {
-        setHoveredHandle(null);
-        setHoveredEdgeSegment(null);
+      };
+
+      // Throttle hover checks
+      const now = Date.now();
+      const lastCheck = lastHoverCheckRef.current;
+      const shouldCheck =
+        !lastCheck ||
+        now - lastCheck.time >= HOVER_THROTTLE_MS ||
+        Math.abs(artboardMouseX - lastCheck.x) > 2 ||
+        Math.abs(artboardMouseY - lastCheck.y) > 2;
+
+      if (shouldCheck) {
+        if (hoverThrottleRef.current !== null) {
+          cancelAnimationFrame(hoverThrottleRef.current);
+        }
+        hoverThrottleRef.current = requestAnimationFrame(() => {
+          performHoverCheck();
+          lastHoverCheckRef.current = { x: artboardMouseX, y: artboardMouseY, time: now };
+          hoverThrottleRef.current = null;
+        });
       }
 
       // Check if mouse button is pressed
@@ -254,6 +333,12 @@ export function useMouseMove(params: MouseEventsParams & {
         initialMousePos &&
         (initialMousePos.x !== 0 || initialMousePos.y !== 0)
       ) {
+        // Check if any selected object is locked
+        const selectedObj = storeState.objects.find((obj) => obj.id === currentSelection[0]);
+        if (selectedObj?.locked === true) {
+          return; // Don't allow dragging locked objects
+        }
+
         const deltaX = e.clientX - initialMousePos.x;
         const deltaY = e.clientY - initialMousePos.y;
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -269,28 +354,36 @@ export function useMouseMove(params: MouseEventsParams & {
         }
       }
 
-      // Handle artboard dragging
+      // Handle artboard dragging (smooth panning - update immediately like shape dragging)
       if (isDraggingArtboard && !isDraggingObject) {
+        const currentStore = useEditorStore.getState();
         const deltaX = e.clientX - artboardDragStart.x;
         const deltaY = e.clientY - artboardDragStart.y;
-        const currentStore = useEditorStore.getState();
-        const { x: clampedX, y: clampedY } = clampPanToWorkspace(
-          currentStore.panX + deltaX,
-          currentStore.panY + deltaY,
+        
+        // Calculate new pan position directly (smooth like shape dragging)
+        const nextPanX = currentStore.panX + deltaX;
+        const nextPanY = currentStore.panY + deltaY;
+
+        const { x: clampedPanX, y: clampedPanY } = clampPanToWorkspace(
+          nextPanX,
+          nextPanY,
           canvas.width,
           canvas.height
         );
 
-        useEditorStore.getState().setPan(clampedX, clampedY);
+        // Update pan immediately for smooth response (like shape dragging)
+        useEditorStore.getState().setPan(clampedPanX, clampedPanY);
         setArtboardDragStart({ x: e.clientX, y: e.clientY });
+        setNeedsRender(true);
+        
         return;
       }
 
       // Handle transform operations
+      // OPTIMIZED: Cache store state to avoid multiple lookups
       if (isTransforming && selectedObjects.length > 0) {
-        const selectedObj = useEditorStore
-          .getState()
-          .objects.find((obj) => obj.id === selectedObjects[0]);
+        const transformStore = useEditorStore.getState();
+        const selectedObj = transformStore.objects.find((obj) => obj.id === selectedObjects[0]);
         if (selectedObj) {
           // Handle rotation
           if (transformHandle === 'rotate') {
@@ -333,9 +426,7 @@ export function useMouseMove(params: MouseEventsParams & {
 
             // Update rotation immediately for responsive feel
             setCurrentRotation(snappedRotation);
-            useEditorStore
-              .getState()
-              .updateObject(selectedObj.id, { rotation: snappedRotation });
+            transformStore.updateObject(selectedObj.id, { rotation: snappedRotation });
             setNeedsRender(true);
             
             // Update transform start partially towards current mouse position
@@ -385,7 +476,7 @@ export function useMouseMove(params: MouseEventsParams & {
             const newWidth = Math.max(0.1, updates.width || selectedObj.width);
             const newHeight = Math.max(0.1, updates.height || selectedObj.height);
 
-            useEditorStore.getState().updateObject(selectedObj.id, {
+            transformStore.updateObject(selectedObj.id, {
               ...updates,
               width: newWidth,
               height: newHeight,
@@ -578,11 +669,10 @@ export function useMouseMove(params: MouseEventsParams & {
             const newX = newLeft;
             const newY = newTop;
 
-            // Batch update all selected objects
-            const store = useEditorStore.getState();
+            // OPTIMIZED: Batch update all selected objects (use cached store)
             const transformUpdates = selectedObjects
               .map((objId) => {
-                const obj = store.objects.find((o) => o.id === objId);
+                const obj = transformStore.objects.find((o) => o.id === objId);
                 if (!obj) return null;
 
                 const relativeX = obj.x - selectedObj.x;
@@ -610,6 +700,7 @@ export function useMouseMove(params: MouseEventsParams & {
                 dragFrameRef.current = requestAnimationFrame(() => {
                   const updates = pendingDragUpdatesRef.current;
                   if (updates && updates.length > 0) {
+                    // Use fresh store state for updates
                     useEditorStore.getState().updateObjects(updates);
                     setNeedsRender(true);
                   }
@@ -811,6 +902,7 @@ export function useMouseMove(params: MouseEventsParams & {
       setHoveredEdgeSegment,
       setCursorPosition,
       setMousePosition,
+      setHoveredObjectType,
       selectedObjects,
       zoom,
       documentDpi,

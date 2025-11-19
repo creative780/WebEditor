@@ -107,40 +107,37 @@ export function ShapesPanel() {
     const centerX = documentWidth / 2;
     const centerY = documentHeight / 2;
     
-    // Create all shapes as shape objects (simpler approach)
-    {
-      // Create basic shape object
-      const newShape = {
-        id: `shape-${Date.now()}`,
-        type: 'shape' as const,
-        shape: shapeType as any,
-        x: centerX - defaultWidth / 2,
-        y: centerY - defaultHeight / 2,
-        width: shapeType === 'circle' ? defaultHeight : defaultWidth,
-        height: shapeType === 'circle' ? defaultHeight : (shapeType === 'line' ? 0.1 : defaultHeight),
-        rotation: 0,
-        opacity: 1,
-        locked: false,
-        visible: true,
-        name: SHAPES.find(s => s.id === shapeType)?.name || 'Shape',
-        zIndex: Date.now(),
-        fill: {
-          type: 'solid' as const,
-          color: '#6F1414',
-        },
-        stroke: {
-          width: 1,
-          color: '#5A1010',
-          style: 'solid' as const,
-          cap: 'butt' as const,
-          join: 'miter' as const,
-        },
-        borderRadius: shapeType === 'rectangle' ? 4 : 0,
-      };
+    // Create basic shape object
+    const newShape = {
+      id: `shape-${Date.now()}`,
+      type: 'shape' as const,
+      shape: shapeType as any,
+      x: centerX - defaultWidth / 2,
+      y: centerY - defaultHeight / 2,
+      width: shapeType === 'circle' ? defaultHeight : defaultWidth,
+      height: shapeType === 'circle' ? defaultHeight : (shapeType === 'line' ? 0.1 : defaultHeight),
+      rotation: 0,
+      opacity: 1,
+      locked: false,
+      visible: true,
+      name: SHAPES.find(s => s.id === shapeType)?.name || 'Shape',
+      zIndex: Date.now(),
+      fill: {
+        type: 'solid' as const,
+        color: '#6F1414',
+      },
+      stroke: {
+        width: 1,
+        color: '#5A1010',
+        style: 'solid' as const,
+        cap: 'butt' as const,
+        join: 'miter' as const,
+      },
+      borderRadius: shapeType === 'rectangle' ? 4 : 0,
+    };
 
-      addObject(newShape);
-      useEditorStore.getState().selectObject(newShape.id);
-    }
+    addObject(newShape);
+    useEditorStore.getState().selectObject(newShape.id);
   }, [addObject]);
 
   // Get the first selected shape or path for property editing

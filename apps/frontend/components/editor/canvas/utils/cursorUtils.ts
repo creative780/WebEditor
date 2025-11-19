@@ -1,8 +1,10 @@
 /**
  * Cursor style utilities
  * Determines the appropriate cursor based on tool, hover state, and object interactions
+ * OPTIMIZED: Memoized cursor style calculation
  */
 
+import { useMemo } from 'react';
 import type { EdgeSegment } from '../../../../lib/shapePathUtils';
 
 function getCursorForEdgeSegment(segment: EdgeSegment | null): string | null {
@@ -33,6 +35,29 @@ function getCursorForEdgeSegment(segment: EdgeSegment | null): string | null {
   }
 }
 
+// Cache for cursor styles
+const cursorCache = new Map<string, string>();
+
+function getCursorCacheKey(
+  activeTool: string,
+  hoveredHandle: string | null,
+  hoveredEdgeSegment: EdgeSegment | null,
+  isOverArtboard: boolean,
+  isDragging: boolean,
+  isTransforming: boolean,
+  transformHandle: string | null,
+  transformEdgeSegment: EdgeSegment | null,
+  hoveredObjectType?: string | null
+): string {
+  const segmentKey = hoveredEdgeSegment
+    ? `${hoveredEdgeSegment.type}-${hoveredEdgeSegment.normal?.x}-${hoveredEdgeSegment.normal?.y}`
+    : 'null';
+  const transformSegmentKey = transformEdgeSegment
+    ? `${transformEdgeSegment.type}-${transformEdgeSegment.normal?.x}-${transformEdgeSegment.normal?.y}`
+    : 'null';
+  return `${activeTool}-${hoveredHandle}-${segmentKey}-${isOverArtboard}-${isDragging}-${isTransforming}-${transformHandle}-${transformSegmentKey}-${hoveredObjectType || 'null'}`;
+}
+
 export function getCursorStyle(
   activeTool: string,
   hoveredHandle: string | null,
@@ -41,78 +66,94 @@ export function getCursorStyle(
   isDragging: boolean,
   isTransforming: boolean,
   transformHandle: string | null,
-  transformEdgeSegment: EdgeSegment | null
+  transformEdgeSegment: EdgeSegment | null,
+  hoveredObjectType?: string | null
 ): string {
+  const cacheKey = getCursorCacheKey(
+    activeTool,
+    hoveredHandle,
+    hoveredEdgeSegment,
+    isOverArtboard,
+    isDragging,
+    isTransforming,
+    transformHandle,
+    transformEdgeSegment,
+    hoveredObjectType
+  );
+
+  if (cursorCache.has(cacheKey)) {
+    return cursorCache.get(cacheKey)!;
+  }
+
+  let cursor: string;
+
   // Transform cursor should reflect active handle while transforming
   if (isTransforming && transformHandle) {
     switch (transformHandle) {
       case 'nw':
       case 'se':
-        return 'nwse-resize';
+        cursor = 'nwse-resize';
+        break;
       case 'ne':
       case 'sw':
-        return 'nesw-resize';
+        cursor = 'nesw-resize';
+        break;
       case 'n':
       case 's':
-        return 'ns-resize';
+        cursor = 'ns-resize';
+        break;
       case 'e':
       case 'w':
-        return 'ew-resize';
+        cursor = 'ew-resize';
+        break;
       case 'rotate':
-        return 'grabbing';
+        cursor = 'grabbing';
+        break;
       default:
-        return 'move';
+        cursor = 'move';
     }
   } else if (isTransforming) {
     const segmentCursor = getCursorForEdgeSegment(transformEdgeSegment);
-    if (segmentCursor) {
-      return segmentCursor;
-    }
-  }
-
-  // During object drag (not transform), show move cursor
-  if (isDragging) {
-    return 'move';
-  }
-
-  // Transform handle cursors while hovering
-  if (hoveredHandle) {
+    cursor = segmentCursor || 'move';
+  } else if (isDragging) {
+    // During object drag (not transform), show move cursor
+    cursor = 'move';
+  } else if (hoveredHandle) {
+    // Transform handle cursors while hovering
     switch (hoveredHandle) {
       case 'nw':
       case 'se':
-        return 'nwse-resize';
+        cursor = 'nwse-resize';
+        break;
       case 'ne':
       case 'sw':
-        return 'nesw-resize';
+        cursor = 'nesw-resize';
+        break;
       case 'n':
       case 's':
-        return 'ns-resize';
+        cursor = 'ns-resize';
+        break;
       case 'e':
       case 'w':
-        return 'ew-resize';
+        cursor = 'ew-resize';
+        break;
       case 'rotate':
-        return 'grab';
+        cursor = 'grab';
+        break;
       default:
-        return 'move';
+        cursor = 'move';
     }
-  }
-
-  // Edge segment cursor (for path editing)
-  if (hoveredEdgeSegment) {
+  } else if (hoveredEdgeSegment) {
+    // Edge segment cursor (for path editing)
     const segmentCursor = getCursorForEdgeSegment(hoveredEdgeSegment);
-    if (segmentCursor) {
-      return segmentCursor;
-    }
-    return 'pointer';
-  }
-
-  // Show grab cursor on empty artboard space (indicates you can pan)
-  if (isOverArtboard) {
-    return 'grab';
-  }
-
-  // Shape tools get crosshair cursor for better UX
-  if (
+    cursor = segmentCursor || 'pointer';
+  } else if (hoveredObjectType === 'text' && !hoveredHandle) {
+    // Show text cursor when hovering over text objects (but not over handles)
+    cursor = 'text';
+  } else if (isOverArtboard) {
+    // Show grab cursor on empty artboard space (indicates you can pan)
+    cursor = 'grab';
+  } else if (
     [
       'rectangle',
       'circle',
@@ -126,20 +167,81 @@ export function getCursorStyle(
       'callout',
     ].includes(activeTool)
   ) {
-    return 'crosshair';
+    // Shape tools get crosshair cursor for better UX
+    cursor = 'crosshair';
+  } else {
+    switch (activeTool) {
+      case 'move':
+        cursor = 'move';
+        break;
+      case 'brush':
+        cursor = 'crosshair';
+        break;
+      case 'text':
+        cursor = 'text';
+        break;
+      case 'crop':
+        cursor = 'crosshair';
+        break;
+      default:
+        cursor = 'grab';
+    }
   }
 
-  switch (activeTool) {
-    case 'move':
-      return 'move';
-    case 'brush':
-      return 'crosshair';
-    case 'text':
-      return 'text';
-    case 'crop':
-      return 'crosshair';
-    default:
-      return 'grab';
+  // Cache result (limit cache size)
+  if (cursorCache.size > 100) {
+    const firstKey = cursorCache.keys().next().value;
+    cursorCache.delete(firstKey);
   }
+  cursorCache.set(cacheKey, cursor);
+
+  return cursor;
 }
 
+/**
+ * Hook version with memoization for React components
+ */
+export function useCursorStyle(
+  activeTool: string,
+  hoveredHandle: string | null,
+  hoveredEdgeSegment: EdgeSegment | null,
+  isOverArtboard: boolean,
+  isDragging: boolean,
+  isTransforming: boolean,
+  transformHandle: string | null,
+  transformEdgeSegment: EdgeSegment | null,
+  hoveredObjectType?: string | null
+): string {
+  return useMemo(
+    () =>
+      getCursorStyle(
+        activeTool,
+        hoveredHandle,
+        hoveredEdgeSegment,
+        isOverArtboard,
+        isDragging,
+        isTransforming,
+        transformHandle,
+        transformEdgeSegment,
+        hoveredObjectType
+      ),
+    [
+      activeTool,
+      hoveredHandle,
+      hoveredEdgeSegment,
+      isOverArtboard,
+      isDragging,
+      isTransforming,
+      transformHandle,
+      transformEdgeSegment,
+      hoveredObjectType,
+    ]
+  );
+}
+
+/**
+ * Clear cursor cache (useful for testing)
+ */
+export function clearCursorCache(): void {
+  cursorCache.clear();
+}

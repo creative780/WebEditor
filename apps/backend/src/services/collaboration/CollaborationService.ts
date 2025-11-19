@@ -6,6 +6,7 @@
 import { Pool } from 'pg';
 import pool from '../../config/database';
 import { Server as SocketServer } from 'socket.io';
+import DesignService from '../design/DesignService';
 
 export interface Collaborator {
   id: string;
@@ -145,6 +146,10 @@ export class CollaborationService {
     role: 'owner' | 'editor' | 'viewer';
     invited_by: string;
   }): Promise<Collaborator> {
+    // Ensure design exists before adding collaborator
+    // This returns the actual UUID to use for foreign keys
+    const actualDesignId = await this.ensureDesignExists(data.design_id, data.invited_by);
+
     const query = `
       INSERT INTO design_collaborators (design_id, user_id, role, invited_by)
       VALUES ($1, $2, $3, $4)
@@ -153,23 +158,104 @@ export class CollaborationService {
       RETURNING *
     `;
 
-    const values = [data.design_id, data.user_id, data.role, data.invited_by];
+    const values = [actualDesignId, data.user_id, data.role, data.invited_by];
     const result = await this.db.query(query, values);
     return result.rows[0];
   }
 
   // Get collaborators
   async getCollaborators(design_id: string): Promise<Collaborator[]> {
+    // First, get the actual design UUID (may need to look up by name if design_id is not UUID)
+    const actualDesignId = await this.getActualDesignId(design_id);
+    if (!actualDesignId) {
+      return []; // Design doesn't exist
+    }
+    
     const query = 'SELECT * FROM design_collaborators WHERE design_id = $1';
-    const result = await this.db.query(query, [design_id]);
+    const result = await this.db.query(query, [actualDesignId]);
     return result.rows;
+  }
+
+  // Get actual design UUID from design_id (handles both UUID and string IDs)
+  private async getActualDesignId(design_id: string): Promise<string | null> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    if (uuidRegex.test(design_id)) {
+      // It's a UUID, check if design exists
+      const result = await this.db.query('SELECT id FROM designs WHERE id = $1', [design_id]);
+      return result.rows.length > 0 ? result.rows[0].id : null;
+    } else {
+      // Not a UUID, look up by name
+      const result = await this.db.query('SELECT id FROM designs WHERE name = $1 ORDER BY created_at DESC LIMIT 1', [design_id]);
+      return result.rows.length > 0 ? result.rows[0].id : null;
+    }
   }
 
   // Remove collaborator
   async removeCollaborator(design_id: string, user_id: string): Promise<boolean> {
+    // First, get the actual design UUID
+    const actualDesignId = await this.getActualDesignId(design_id);
+    if (!actualDesignId) {
+      return false; // Design doesn't exist
+    }
+    
     const query = 'DELETE FROM design_collaborators WHERE design_id = $1 AND user_id = $2';
-    const result = await this.db.query(query, [design_id, user_id]);
-    return result.rowCount > 0;
+    const result = await this.db.query(query, [actualDesignId, user_id]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Ensure design exists, create if it doesn't
+  // Returns the actual design UUID (may differ from design_id if design_id is not a UUID)
+  private async ensureDesignExists(design_id: string, user_id: string): Promise<string> {
+    // First, try to get existing design
+    const existingId = await this.getActualDesignId(design_id);
+    if (existingId) {
+      return existingId;
+    }
+
+    // Design doesn't exist, create it
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUUID = uuidRegex.test(design_id);
+    
+    if (isUUID) {
+      // Valid UUID - create design with this ID
+      await this.db.query(
+        `INSERT INTO designs (id, user_id, name, width, height, unit, dpi, bleed, color_mode)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          design_id,
+          user_id,
+          `Design ${design_id.slice(0, 8)}`,
+          8.5, // Default letter size width
+          11,  // Default letter size height
+          'in',
+          300,
+          0.125,
+          'rgb',
+        ]
+      );
+      return design_id;
+    } else {
+      // Not a valid UUID - create with auto-generated UUID
+      // Store the original design_id in the name field for lookup
+      const result = await this.db.query(
+        `INSERT INTO designs (user_id, name, width, height, unit, dpi, bleed, color_mode)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          user_id,
+          design_id, // Store the original design_id as the name for lookup
+          8.5,
+          11,
+          'in',
+          300,
+          0.125,
+          'rgb',
+        ]
+      );
+      
+      return result.rows[0].id;
+    }
   }
 
   // Check permission
@@ -183,8 +269,8 @@ export class CollaborationService {
     
     if (result.rows.length === 0) return false;
 
-    const role = result.rows[0].role;
-    const roleHierarchy = { owner: 3, editor: 2, viewer: 1 };
+    const role = result.rows[0].role as 'owner' | 'editor' | 'viewer';
+    const roleHierarchy: { owner: number; editor: number; viewer: number } = { owner: 3, editor: 2, viewer: 1 };
     
     return roleHierarchy[role] >= roleHierarchy[required_role];
   }
@@ -199,6 +285,10 @@ export class CollaborationService {
     y?: number;
     parent_id?: string;
   }): Promise<Comment> {
+    // Ensure design exists before creating comment
+    // This returns the actual UUID to use for foreign keys
+    const actualDesignId = await this.ensureDesignExists(data.design_id, data.user_id);
+
     const query = `
       INSERT INTO design_comments (
         design_id, user_id, content, object_id, x, y, parent_id
@@ -207,7 +297,7 @@ export class CollaborationService {
     `;
 
     const values = [
-      data.design_id,
+      actualDesignId, // Use the actual UUID for foreign key
       data.user_id,
       data.content,
       data.object_id || null,
@@ -229,12 +319,18 @@ export class CollaborationService {
 
   // Get comments
   async getComments(design_id: string): Promise<Comment[]> {
+    // First, get the actual design UUID
+    const actualDesignId = await this.getActualDesignId(design_id);
+    if (!actualDesignId) {
+      return []; // Design doesn't exist
+    }
+    
     const query = `
       SELECT * FROM design_comments 
       WHERE design_id = $1 
       ORDER BY created_at DESC
     `;
-    const result = await this.db.query(query, [design_id]);
+    const result = await this.db.query(query, [actualDesignId]);
     return result.rows;
   }
 
@@ -264,7 +360,7 @@ export class CollaborationService {
       this.io.to(`design:${result.rows[0].design_id}`).emit('comment:deleted', { id: comment_id });
     }
 
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Create version
@@ -274,13 +370,17 @@ export class CollaborationService {
     snapshot: any;
     description: string;
   }): Promise<DesignVersion> {
+    // Ensure design exists before creating version
+    // This returns the actual UUID to use for foreign keys
+    const actualDesignId = await this.ensureDesignExists(data.design_id, data.created_by);
+
     // Get next version number
     const versionQuery = `
       SELECT COALESCE(MAX(version_number), 0) as max_version 
       FROM design_versions 
       WHERE design_id = $1
     `;
-    const versionResult = await this.db.query(versionQuery, [data.design_id]);
+    const versionResult = await this.db.query(versionQuery, [actualDesignId]);
     const nextVersion = versionResult.rows[0].max_version + 1;
 
     const query = `
@@ -291,7 +391,7 @@ export class CollaborationService {
     `;
 
     const values = [
-      data.design_id,
+      actualDesignId,
       nextVersion,
       data.created_by,
       JSON.stringify(data.snapshot),
@@ -304,12 +404,18 @@ export class CollaborationService {
 
   // Get versions
   async getVersions(design_id: string): Promise<DesignVersion[]> {
+    // First, get the actual design UUID
+    const actualDesignId = await this.getActualDesignId(design_id);
+    if (!actualDesignId) {
+      return []; // Design doesn't exist
+    }
+    
     const query = `
       SELECT * FROM design_versions 
       WHERE design_id = $1 
       ORDER BY version_number DESC
     `;
-    const result = await this.db.query(query, [design_id]);
+    const result = await this.db.query(query, [actualDesignId]);
     return result.rows;
   }
 

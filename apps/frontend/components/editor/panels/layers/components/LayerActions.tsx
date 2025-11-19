@@ -47,26 +47,10 @@ export function LayerActions({
         )}
       </div>
 
-      {/* Bulk Actions */}
+      {/* Selection Info */}
       <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="text-xs text-gray-600 mb-2">
+        <div className="text-xs text-gray-600">
           {selectionCount} layer{selectionCount > 1 ? 's' : ''} selected
-        </div>
-        <div className="flex gap-2">
-          <button
-            className="btn btn-ghost text-xs flex-1"
-            onClick={onDuplicateAll}
-          >
-            <Copy className="icon-sm mr-1" />
-            Duplicate
-          </button>
-          <button
-            className="btn btn-ghost text-xs flex-1 text-red-600 hover:bg-red-50"
-            onClick={onDeleteAll}
-          >
-            <Trash2 className="icon-sm mr-1" />
-            Delete
-          </button>
         </div>
       </div>
     </>

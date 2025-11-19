@@ -26,7 +26,8 @@ export function GradientPanel() {
             type: 'gradient',
             gradient: {
               type,
-              angle: type === 'linear' ? angle : undefined,
+              // Angle is used for linear and conic gradients, not for radial
+              angle: (type === 'linear' || type === 'conic') ? angle : undefined,
               stops,
             },
           },
@@ -45,7 +46,8 @@ export function GradientPanel() {
             ...obj.fill,
             gradient: {
               type: gradientType,
-              angle: newAngle,
+              // Angle is used for linear and conic gradients, not for radial
+              angle: (gradientType === 'linear' || gradientType === 'conic') ? newAngle : undefined,
               stops,
             },
           },
@@ -66,7 +68,8 @@ export function GradientPanel() {
             ...obj.fill,
             gradient: {
               type: gradientType,
-              angle: gradientType === 'linear' ? angle : undefined,
+              // Angle is used for linear and conic gradients, not for radial
+              angle: (gradientType === 'linear' || gradientType === 'conic') ? angle : undefined,
               stops: newStops,
             },
           },
@@ -83,12 +86,46 @@ export function GradientPanel() {
     };
     const newStops = [...stops, newStop].sort((a, b) => a.position - b.position);
     setStops(newStops);
+    
+    // Apply the updated stops to selected objects
+    selectedObjects.forEach(obj => {
+      if (obj.type === 'shape' || obj.type === 'path') {
+        applyStyle(obj.id, {
+          fill: {
+            ...obj.fill,
+            gradient: {
+              type: gradientType,
+              // Angle is used for linear and conic gradients, not for radial
+              angle: (gradientType === 'linear' || gradientType === 'conic') ? angle : undefined,
+              stops: newStops,
+            },
+          },
+        });
+      }
+    });
   };
 
   const removeStop = (index: number) => {
     if (stops.length > 2) {
       const newStops = stops.filter((_, i) => i !== index);
       setStops(newStops);
+      
+      // Apply the updated stops to selected objects
+      selectedObjects.forEach(obj => {
+        if (obj.type === 'shape' || obj.type === 'path') {
+          applyStyle(obj.id, {
+            fill: {
+              ...obj.fill,
+              gradient: {
+                type: gradientType,
+                // Angle is used for linear and conic gradients, not for radial
+                angle: (gradientType === 'linear' || gradientType === 'conic') ? angle : undefined,
+                stops: newStops,
+              },
+            },
+          });
+        }
+      });
     }
   };
 
@@ -142,8 +179,8 @@ export function GradientPanel() {
           </div>
         </div>
 
-        {/* Angle (for linear gradients) */}
-        {gradientType === 'linear' && (
+        {/* Angle (for linear and conic gradients) */}
+        {(gradientType === 'linear' || gradientType === 'conic') && (
           <div className="mb-4">
             <div className="flex justify-between text-xs mb-1">
               <span>Angle</span>
@@ -167,10 +204,10 @@ export function GradientPanel() {
             className="w-full h-16 rounded border border-gray-300"
             style={{
               background: gradientType === 'linear' 
-                ? `linear-gradient(${angle}deg, ${stops.map(s => `${s.color}${Math.round(s.opacity * 255).toString(16).padStart(2, '0')}`).join(', ')})`
+                ? `linear-gradient(${angle}deg, ${stops.map(s => `${s.color} ${s.position * 100}%`).join(', ')})`
                 : gradientType === 'radial'
-                ? `radial-gradient(circle, ${stops.map(s => `${s.color}${Math.round(s.opacity * 255).toString(16).padStart(2, '0')}`).join(', ')})`
-                : `conic-gradient(${stops.map(s => `${s.color}${Math.round(s.opacity * 255).toString(16).padStart(2, '0')}`).join(', ')})`
+                ? `radial-gradient(circle, ${stops.map(s => `${s.color} ${s.position * 100}%`).join(', ')})`
+                : `conic-gradient(from ${angle}deg, ${stops.map(s => `${s.color} ${s.position * 100}%`).join(', ')})`
             }}
           />
         </div>

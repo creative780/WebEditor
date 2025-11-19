@@ -59,8 +59,8 @@ export function LayersPanel() {
           canUngroup={canUngroup}
           onGroup={handleGroupSelected}
           onUngroup={handleUngroupSelected}
-          onDuplicateAll={() => selection.forEach((id) => handleDuplicate(id))}
-          onDeleteAll={() => selection.forEach((id) => handleDelete(id))}
+          onDuplicateAll={() => {}}
+          onDeleteAll={() => {}}
         />
 
         {/* Layers List */}

@@ -1,9 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
 import { Type } from 'lucide-react';
 import { useEditorStore, useSelectedObjects, TextObj } from '../../../../state/useEditorStore';
-import { useTextMetrics } from './hooks/useTextMetrics';
 import { TextContentEditor } from './components/TextContentEditor';
 import { TextColorPicker } from './components/TextColorPicker';
 import { FontSelector } from './components/FontSelector';
@@ -13,7 +11,7 @@ import { TextListControls } from './components/TextListControls';
 import { TextPathControls } from './components/TextPathControls';
 
 export function TextPanel() {
-  const { applyStyle, addObject, document, applyTransform } = useEditorStore();
+  const { applyStyle, addObject, document } = useEditorStore();
   const selectedObjects = useSelectedObjects();
 
   // Get the first selected text object
@@ -21,44 +19,10 @@ export function TextPanel() {
     (obj) => obj.type === 'text'
   ) as TextObj | undefined;
 
-  const { calculateTextHeight } = useTextMetrics(selectedText);
-
-  // Auto-adjust height when text properties change
-  useEffect(() => {
-    if (!selectedText || selectedText.type !== 'text') return;
-
-    const timeoutId = setTimeout(() => {
-      const freshObjects = useEditorStore.getState().objects;
-      const freshTextObj = freshObjects.find(
-        (obj) => obj.id === selectedText.id && obj.type === 'text'
-      ) as TextObj | undefined;
-      if (!freshTextObj) return;
-
-      const requiredHeight = calculateTextHeight(freshTextObj);
-      const currentHeight = freshTextObj.height || 0.5;
-      const heightDiff = Math.abs(requiredHeight - currentHeight);
-
-      if (heightDiff > 0.01) {
-        applyTransform(freshTextObj.id, {
-          height: requiredHeight,
-        });
-      }
-    }, 16);
-
-    return () => clearTimeout(timeoutId);
-  }, [
-    selectedText?.text,
-    selectedText?.fontSize,
-    selectedText?.lineHeight,
-    selectedText?.width,
-    selectedText?.fontFamily,
-    selectedText?.wrapMode,
-    selectedText?.padding,
-    selectedText?.letterSpacing,
-    selectedText?.id,
-    calculateTextHeight,
-    applyTransform,
-  ]);
+  // DISABLED: Auto-height adjustment - text field maintains its initial fixed size
+  // The text field will keep its dimensions as set initially and will not grow when typing
+  // Text will wrap/clip within the fixed boundaries
+  // Users can manually resize using transform handles if needed
 
   // Create new text object
   const handleCreateText = () => {
@@ -66,9 +30,9 @@ export function TextPanel() {
       id: `text-${Date.now()}`,
       type: 'text',
       text: 'New Text',
-      x: document.width / 2 - 1,
+      x: document.width / 2 - 0.6,
       y: document.height / 2 - 0.25,
-      width: 2,
+      width: 1.2, // Reduced width to enable wrapping after 10-15 words
       height: 0.5,
       rotation: 0,
       opacity: 1,

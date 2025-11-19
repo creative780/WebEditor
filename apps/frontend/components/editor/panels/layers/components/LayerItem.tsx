@@ -54,6 +54,10 @@ export function LayerItem({
     }
   };
 
+  // Handle undefined values - default visible to true, locked to false
+  const isVisible = obj.visible !== false;
+  const isLocked = obj.locked === true;
+
   return (
     <div
       className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
@@ -85,40 +89,48 @@ export function LayerItem({
         {/* Layer Order Controls */}
         <div className="flex flex-col">
           <button
-            className="p-0.5 hover:bg-gray-200 rounded"
+            className={`p-0.5 rounded transition-opacity ${
+              canMoveUp
+                ? 'hover:bg-gray-200 cursor-pointer'
+                : 'opacity-30 cursor-not-allowed'
+            }`}
             onClick={(e) => {
               e.stopPropagation();
-              onMoveUp();
+              if (canMoveUp) onMoveUp();
             }}
             title="Bring forward"
             disabled={!canMoveUp}
           >
-            <ChevronUp className="icon-xs" />
+            <ChevronUp className={`icon-xs ${canMoveUp ? 'text-gray-700' : 'text-gray-400'}`} />
           </button>
           <button
-            className="p-0.5 hover:bg-gray-200 rounded"
+            className={`p-0.5 rounded transition-opacity ${
+              canMoveDown
+                ? 'hover:bg-gray-200 cursor-pointer'
+                : 'opacity-30 cursor-not-allowed'
+            }`}
             onClick={(e) => {
               e.stopPropagation();
-              onMoveDown();
+              if (canMoveDown) onMoveDown();
             }}
             title="Send backward"
             disabled={!canMoveDown}
           >
-            <ChevronDown className="icon-xs" />
+            <ChevronDown className={`icon-xs ${canMoveDown ? 'text-gray-700' : 'text-gray-400'}`} />
           </button>
         </div>
 
         {/* Visibility Toggle */}
         <button
-          className="p-1 hover:bg-gray-200 rounded"
+          className="p-1 hover:bg-gray-200 rounded transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             onToggleVisibility();
           }}
-          title={obj.visible ? 'Hide layer' : 'Show layer'}
+          title={isVisible ? 'Hide layer' : 'Show layer'}
         >
-          {obj.visible ? (
-            <Eye className="icon-sm" />
+          {isVisible ? (
+            <Eye className="icon-sm text-gray-700" />
           ) : (
             <EyeOff className="icon-sm text-gray-400" />
           )}
@@ -126,15 +138,15 @@ export function LayerItem({
 
         {/* Lock Toggle */}
         <button
-          className="p-1 hover:bg-gray-200 rounded"
+          className="p-1 hover:bg-gray-200 rounded transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             onToggleLock();
           }}
-          title={obj.locked ? 'Unlock layer' : 'Lock layer'}
+          title={isLocked ? 'Unlock layer' : 'Lock layer'}
         >
-          {obj.locked ? (
-            <Lock className="icon-sm" />
+          {isLocked ? (
+            <Lock className="icon-sm text-gray-700" />
           ) : (
             <Unlock className="icon-sm text-gray-400" />
           )}

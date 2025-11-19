@@ -151,11 +151,42 @@ export const createObjectsSlice: StateCreator<
           ? { ...state.history, past: newPast.slice(1), future: [] }
           : { ...state.history, past: newPast, future: [] };
 
+      // Find the rightmost object in the duplicate chain
+      // Look for objects that are duplicates (same Y position, same dimensions, or part of duplicate chain)
+      const gapInDocumentUnits = 0.1;
+      const yTolerance = 0.01; // Small tolerance for Y position matching
+      
+      // Find all potential duplicates in the chain:
+      // 1. The original object itself
+      // 2. Objects with IDs starting with the original ID (direct duplicates)
+      // 3. Objects with same Y position and dimensions (duplicates that might have been moved)
+      const potentialDuplicates = state.objects.filter((obj) => {
+        if (obj.id === id) return true; // Include original
+        
+        const sameY = Math.abs(obj.y - object.y) < yTolerance;
+        const sameDimensions = Math.abs(obj.width - object.width) < 0.01 && 
+                               Math.abs(obj.height - object.height) < 0.01;
+        
+        // Check if it's a duplicate by ID pattern (originalId_copy_timestamp or originalId_copy_timestamp_copy_timestamp)
+        const isDuplicateById = obj.id.startsWith(id + '_copy_') || 
+                                (obj.id.includes('_copy_') && sameY && sameDimensions);
+        
+        return isDuplicateById || (sameY && sameDimensions);
+      });
+
+      // Find the rightmost object (highest x + width) in the chain
+      const rightmostObject = potentialDuplicates.reduce((rightmost, obj) => {
+        const rightmostRight = rightmost.x + rightmost.width;
+        const objRight = obj.x + obj.width;
+        return objRight > rightmostRight ? obj : rightmost;
+      }, object);
+
+      // Position new duplicate to the right of the rightmost object
       const duplicated = {
         ...object,
         id: `${id}_copy_${Date.now()}`,
-        x: object.x + 10,
-        y: object.y + 10,
+        x: rightmostObject.x + rightmostObject.width + gapInDocumentUnits,
+        y: object.y, // Keep same Y position
       } as typeof object;
 
       return {

@@ -314,6 +314,7 @@ function backendToFrontend(backendObj: BackendDesignObject): TextObj | ImageObj 
 export class DesignClient {
   async loadDesign(designId: string): Promise<{
     designId: string;
+    designName?: string;
     document: DocumentConfig;
     objects: (TextObj | ImageObj | ShapeObj | PathObj)[];
     projectColorMode: 'rgb' | 'cmyk' | 'pantone';
@@ -331,6 +332,7 @@ export class DesignClient {
 
       return {
         designId: design.id,
+        designName: design.name,
         document: {
           width: design.width,
           height: design.height,

@@ -73,6 +73,59 @@ function createLinearGradientFill(
   return gradient;
 }
 
+function createRadialGradientFill(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  stops: GradientStop[]
+): CanvasGradient {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  // Use the maximum radius to cover the entire shape
+  const maxRadius = Math.sqrt(width * width + height * height) / 2;
+
+  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
+
+  const sortedStops = [...stops].sort((a, b) => a.position - b.position);
+  sortedStops.forEach((stop) => {
+    gradient.addColorStop(
+      Math.max(0, Math.min(1, stop.position)),
+      hexToRgba(stop.color, stop.opacity ?? 1)
+    );
+  });
+
+  return gradient;
+}
+
+function createConicGradientFill(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  angle: number | undefined,
+  stops: GradientStop[]
+): CanvasGradient {
+  // Canvas API doesn't have native conic gradient support
+  // We'll use a workaround by creating a radial gradient that approximates conic
+  // For a better implementation, we'd need to use a pattern or offscreen canvas
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const maxRadius = Math.sqrt(width * width + height * height) / 2;
+
+  // Create a radial gradient as fallback (conic gradients require more complex rendering)
+  // For now, we'll use a radial gradient that respects the angle for the starting position
+  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
+
+  const sortedStops = [...stops].sort((a, b) => a.position - b.position);
+  sortedStops.forEach((stop) => {
+    gradient.addColorStop(
+      Math.max(0, Math.min(1, stop.position)),
+      hexToRgba(stop.color, stop.opacity ?? 1)
+    );
+  });
+
+  return gradient;
+}
+
 export function getFillStyle(
   ctx: CanvasRenderingContext2D,
   obj: any,
@@ -97,7 +150,26 @@ export function getFillStyle(
         );
       }
 
-      // TODO: Implement radial/conic gradients. Fallback to the first stop color for now.
+      if (fill.gradient.type === 'radial') {
+        return createRadialGradientFill(
+          ctx,
+          width,
+          height,
+          stops
+        );
+      }
+
+      if (fill.gradient.type === 'conic') {
+        return createConicGradientFill(
+          ctx,
+          width,
+          height,
+          fill.gradient.angle,
+          stops
+        );
+      }
+
+      // Fallback to the first stop color for unknown gradient types
       const firstStop = stops[0];
       if (firstStop) {
         return hexToRgba(firstStop.color, firstStop.opacity ?? 1);

@@ -23,6 +23,7 @@ export function useMouseHover(params: {
   setHasMovedEnough: (value: boolean) => void;
   setCursorPosition: Dispatch<SetStateAction<{ x: number; y: number }>>;
   setMousePosition: Dispatch<SetStateAction<{ x: number; y: number }>>;
+  setHoveredObjectType: (type: string | null) => void;
 }) {
   const {
     canvasRef,
@@ -39,6 +40,7 @@ export function useMouseHover(params: {
     setHasMovedEnough,
     setCursorPosition,
     setMousePosition,
+    setHoveredObjectType,
   } = params;
 
   const handleMouseEnter = useCallback(() => {
@@ -57,6 +59,7 @@ export function useMouseHover(params: {
     setIsDraggingArtboard(false);
     setHoveredHandle(null);
     setHoveredEdgeSegment(null);
+    setHoveredObjectType(null);
     setHasMovedEnough(false);
   }, [
     setIsMouseDown,
@@ -69,6 +72,7 @@ export function useMouseHover(params: {
     setIsDraggingArtboard,
     setHoveredHandle,
     setHoveredEdgeSegment,
+    setHoveredObjectType,
     setHasMovedEnough,
   ]);
 

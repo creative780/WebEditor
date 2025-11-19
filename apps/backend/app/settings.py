@@ -39,6 +39,16 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'app.health',
+    'app.designs',
+    'app.collaboration',
+    'app.design_templates',
+    'app.exports',
+    'app.shape_operations',
+    'app.text',
+    'app.colors',
+    'app.layers',
+    'app.monitoring',
+    'app.analytics',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -79,9 +89,9 @@ ASGI_APPLICATION = 'app.asgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'web_to_print'),
+        'NAME': os.getenv('DB_NAME', 'api_web_editor'),
         'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'creative@123'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
     }

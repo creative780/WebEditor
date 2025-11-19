@@ -1,8 +1,10 @@
 /**
  * Transform handles drawing functions
+ * OPTIMIZED: Uses batched metrics calculation
  */
 
 import {
+  getAllHandleMetrics,
   getHandleLineWidth,
   getHandleRadius,
   getHoverHandleRadius,
@@ -37,9 +39,11 @@ export function drawTransformHandles(
   const centerX = (left + right) / 2;
   const centerY = (top + bottom) / 2;
 
-  const baseRadius = getHandleRadius(zoom);
-  const hoverRadius = getHoverHandleRadius(zoom);
-  const handleLineWidth = getHandleLineWidth(zoom);
+  // Use batched metrics calculation (cached)
+  const metrics = getAllHandleMetrics(zoom);
+  const baseRadius = metrics.handleRadius;
+  const hoverRadius = metrics.hoverHandleRadius;
+  const handleLineWidth = metrics.handleLineWidth;
 
   const strokeColor = '#4B5563';
   const strokeHoverColor = '#2563EB';
@@ -129,9 +133,11 @@ export function drawTransformHandles(
   // Draw rotation handle (outside the top edge)
   const rotationHovered = hoveredHandle === 'rotate';
   const rotationCenterX = centerX;
-  const rotationOffset = getRotationHandleOffset(zoom);
+  const rotationOffset = metrics.rotationHandleOffset;
   const rotationCenterY = top - rotationOffset;
-  const rotationRadius = getRotationHandleRadius(zoom, rotationHovered);
+  const rotationRadius = rotationHovered
+    ? metrics.rotationHandleRadiusHovered
+    : metrics.rotationHandleRadius;
 
   // Stem connecting top edge to rotation handle
   ctx.save();
